@@ -1,0 +1,401 @@
+import cloudinary from "@/config/cloudinary";
+import { eventEmitter } from "@/core/events/eventEmitter";
+import { db } from "@/db";
+import {
+  chatMembers,
+  chatMessages,
+  chatMessagesDeletes,
+  chatMessagesReply,
+  chatReadReceipts,
+  chats,
+  DeleteAction,
+} from "@/db/chatSchema";
+import { UploadApiResponse } from "cloudinary";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { encodeBase64 } from "hono/utils/encode";
+
+export class ChatServices {
+  async createSingleChat({
+    name,
+    user_id,
+  }: {
+    user_id: number[];
+    name?: string;
+  }) {
+    if (user_id.length === 2) {
+      const [existing] = await db
+        .select({
+          chat_id: chatMembers.chat_id,
+        })
+        .from(chatMembers)
+        .leftJoin(chats, eq(chatMembers.chat_id, chats.id))
+        .where(
+          and(
+            inArray(chatMembers.user_id, user_id),
+            eq(chats.chat_type, "single")
+          )
+        )
+        .groupBy(chatMembers.chat_id)
+        .having(sql`COUNT(DISTINCT ${chatMembers.user_id}) = 2`);
+
+      if (existing) {
+        return {
+          ...existing,
+        };
+      }
+
+      const [newChat] = await db
+        .insert(chats)
+        .values({
+          chat_type: "single",
+          created_by: user_id[user_id.length - 1],
+          name,
+        })
+        .returning();
+
+      await db.insert(chatMembers).values(
+        user_id.map((id) => ({
+          chat_id: newChat.id,
+          user_id: id,
+        }))
+      );
+
+      return { newChat };
+    }
+  }
+
+  async getAllChats({
+    id,
+    limit = 10,
+    offset = 0,
+  }: {
+    id: number;
+    limit?: number;
+    offset?: number;
+  }) {
+    const chatIdsResults = await db
+      .select({ chat_id: chatMembers.chat_id })
+      .from(chatMembers)
+      .where(eq(chatMembers.user_id, id));
+
+    const chatIds = chatIdsResults.map((row) => row.chat_id);
+
+    if (chatIds.length === 0) return [];
+
+    const results = await db
+      .select({
+        chat_id: chats.id,
+        chat_name: chats.name,
+        chat_type: chats.chat_type,
+        created_at: chats.created_at,
+        members: sql`
+          json_agg(
+            json_build_object(
+              'id', users.id,
+              'name', users.name,
+              'email', users.email
+            )
+          ) FILTER (WHERE users.id != ${id})
+        `.as("members"),
+        last_message: sql`
+       (
+         SELECT json_build_object(
+           'message', cm.message,
+           'attachments', cm.attachments,
+           'created_at', cm.created_at
+         )
+         FROM chat_messages cm
+         WHERE cm.chat_id = chats.id
+         ORDER BY cm.created_at DESC
+         LIMIT 1
+       )
+     `.as("last_message"),
+        unread_count: sql`
+       (
+         SELECT COUNT(*)
+         FROM chat_read_receipts crr
+         WHERE crr.chat_id = chats.id AND crr.user_id = ${id} AND crr.status = 'unread'
+       )
+     `.as("unread_count"),
+      })
+      .from(chats)
+      .innerJoin(chatMembers, eq(chats.id, chatMembers.chat_id))
+      .innerJoin(sql`users`, eq(chatMembers.user_id, sql`users.id`))
+      .where(inArray(chats.id, chatIds))
+      .groupBy(chats.id, chats.name, chats.chat_type, chats.created_at)
+      .orderBy(desc(chats.updated_at))
+      .limit(limit)
+      .offset(offset);
+
+    return results;
+  }
+
+  async uploadFiles({
+    files,
+    folder_name,
+  }: {
+    files: File[] | null;
+    folder_name: string;
+  }) {
+    if (!files || !Array.isArray(files)) return [];
+    const results: UploadApiResponse[] = [];
+    for (const file of files) {
+      const buffer = await file.arrayBuffer();
+      const base64 = encodeBase64(buffer);
+      const uploadFile = await cloudinary.uploader.upload(
+        `data:${file.type};base64,${base64}`,
+        {
+          folder: folder_name,
+          access_mode: "authenticated",
+        }
+      );
+
+      const { folder, access_mode, api_key, ...rest } = uploadFile;
+      results.push(rest as UploadApiResponse);
+    }
+    return results;
+  }
+
+  async sendMessage({
+    chat_id,
+    files,
+    message,
+    sender_id,
+    reply_message_id,
+  }: {
+    chat_id: string;
+    message: string;
+    files: File[] | null;
+    sender_id: number;
+    reply_message_id?: string;
+  }) {
+    const uploadFiles = await this.uploadFiles({
+      files,
+      folder_name: `chat_messages_${chat_id}`,
+    });
+
+    const [newMessage] = await db
+      .insert(chatMessages)
+      .values({
+        chat_id: Number(chat_id),
+        message,
+        attachments: uploadFiles,
+        sender_id,
+      })
+      .returning();
+
+    let reply_data = null;
+
+    if (reply_message_id) {
+      const reply_id = Number(reply_message_id);
+      const [reply] = await db
+        .select()
+        .from(chatMessages)
+        .where(eq(chatMessages.id, reply_id));
+
+      reply_data = reply;
+
+      await db.insert(chatMessagesReply).values({
+        chat_id: Number(chat_id),
+        message_id: newMessage.id,
+        reply_message_id: reply_id,
+      });
+    }
+
+    eventEmitter.emit("messageSent", {
+      message: {
+        ...newMessage,
+        reply_data: reply_data ? { ...reply_data } : reply_data,
+      },
+      sender_id,
+    });
+
+    return {
+      ...newMessage,
+      reply_data: reply_data ? { ...reply_data } : reply_data,
+    };
+  }
+
+  async getChatMessages({
+    chat_id,
+    user_id,
+    limit = 10,
+    offset = 0,
+  }: {
+    chat_id: string;
+    user_id: number;
+    offset?: number;
+    limit?: number;
+  }) {
+    const results = await db
+      .select({
+        id: chatMessages.id,
+        message: chatMessages.message,
+        attachments: chatMessages.attachments,
+        sender_id: chatMessages.sender_id,
+        created_at: chatMessages.created_at,
+        read_status: chatReadReceipts.status,
+        sender_name: sql`
+          (SELECT name FROM users WHERE id = ${chatMessages.sender_id})
+        `.as("sender_name"),
+        delete_action: chatMessagesDeletes.delete_action,
+        reply_data: sql`
+        (SELECT json_build_object(
+          'id', cm.id,
+          'message', cm.message,
+          'attachments', cm.attachments,
+          'sender_id', cm.sender_id,
+          'created_at', cm.created_at,
+          'sender_name', (SELECT name FROM users WHERE id = cm.sender_id)
+        )
+        FROM chat_messages cm
+        WHERE cm.id = ${chatMessagesReply.reply_message_id})`.as("reply_data"),
+      })
+      .from(chatMessages)
+      .leftJoin(
+        chatReadReceipts,
+        eq(chatMessages.id, chatReadReceipts.message_id)
+      )
+      .leftJoin(
+        chatMessagesDeletes,
+        and(
+          eq(chatMessages.id, chatMessagesDeletes.message_id),
+          eq(chatMessagesDeletes.user_id, user_id)
+        )
+      )
+      .leftJoin(
+        chatMessagesReply,
+        eq(chatMessages.id, chatMessagesReply.message_id)
+      )
+      .where(eq(chatMessages.chat_id, Number(chat_id)))
+      .orderBy(desc(chatMessages.created_at))
+      .limit(limit)
+      .offset(offset);
+
+    return results;
+  }
+
+  async markAsReadMsg({
+    chat_id,
+    user_id,
+  }: {
+    chat_id: number;
+    user_id: number;
+  }) {
+    const { rowCount } = await db
+      .update(chatReadReceipts)
+      .set({ status: "read" })
+      .where(
+        and(
+          eq(chatReadReceipts.chat_id, chat_id),
+          eq(chatReadReceipts.user_id, user_id),
+          eq(chatReadReceipts.status, "unread")
+        )
+      );
+
+    return rowCount;
+  }
+
+  async deleteMessages({
+    message_ids,
+    action,
+    user_id,
+    chat_id,
+  }: {
+    message_ids?: number[];
+    action: DeleteAction;
+    user_id: number;
+    chat_id: number;
+  }) {
+    switch (action) {
+      case "delete_for_me":
+      case "delete_for_everyone":
+      case "permanently_delete": {
+        if (!message_ids || message_ids.length === 0) {
+          throw new Error("message_ids is required");
+        }
+        const values = message_ids.map((id) => ({
+          message_id: id,
+          user_id,
+          delete_action: action as DeleteAction,
+          chat_id,
+        }));
+
+        const data = await db
+          .insert(chatMessagesDeletes)
+          .values(values)
+          .onConflictDoUpdate({
+            target: [
+              chatMessagesDeletes.message_id,
+              chatMessagesDeletes.user_id,
+            ],
+            set: {
+              delete_action: action,
+              deleted_at: new Date(),
+            },
+          })
+          .returning();
+        return data;
+      }
+      case "clear_all_chat": {
+        const allMessages = await db
+          .select()
+          .from(chatMessages)
+          .where(eq(chatMessages.chat_id, chat_id));
+
+        const values = allMessages.map((message) => ({
+          message_id: message.id,
+          user_id,
+          delete_action: action as DeleteAction,
+          chat_id,
+        }));
+
+        const data = await db
+          .insert(chatMessagesDeletes)
+          .values(values)
+          .onConflictDoUpdate({
+            target: [
+              chatMessagesDeletes.message_id,
+              chatMessagesDeletes.user_id,
+            ],
+            set: {
+              delete_action: action,
+              deleted_at: new Date(),
+            },
+          })
+          .returning();
+        return data;
+      }
+      case "recover": {
+        if (!message_ids || message_ids.length === 0) {
+          throw new Error("message_ids is required");
+        }
+
+        const data = await db
+          .delete(chatMessagesDeletes)
+          .where(
+            and(
+              eq(chatMessagesDeletes.user_id, user_id),
+              inArray(chatMessagesDeletes.message_id, message_ids)
+            )
+          )
+          .returning();
+        return data;
+      }
+      case "recover_all_chat": {
+        const data = await db
+          .delete(chatMessagesDeletes)
+          .where(
+            and(
+              eq(chatMessagesDeletes.user_id, user_id),
+              eq(chatMessagesDeletes.chat_id, chat_id)
+            )
+          )
+          .returning();
+        return data;
+      }
+      default:
+        throw new Error("Unsupported delete action");
+    }
+  }
+}

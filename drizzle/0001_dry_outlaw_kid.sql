@@ -1,0 +1,1 @@
+CREATE TYPE "public"."chat_type" AS ENUM('single', 'group');

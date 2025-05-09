@@ -4,8 +4,13 @@ import { authRoutes } from "@/features/auth";
 import { userRouter } from "@/features/user";
 import { chatRouter } from "@/features/chat";
 import SocketService from "./config/socket";
+import { cors } from "hono/cors";
 
-const app = new Hono();
+const app = new Hono().use(
+  cors({
+    origin: ["http://localhost:3001"],
+  })
+);
 
 app.route("/", authRoutes);
 app.route("/", userRouter);

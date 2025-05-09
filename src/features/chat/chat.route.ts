@@ -11,6 +11,11 @@ chatRouter.get("/", async (c) => {
   return c.json(data);
 });
 
+chatRouter.get("/list/:chat_id", async (c) => {
+  const data = await controller.getSingleChatList(c);
+  return c.json(data);
+});
+
 chatRouter.post("/create", async (c) => {
   const data = await controller.createChat(c);
   return c.json(data);

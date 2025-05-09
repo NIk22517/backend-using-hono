@@ -10,8 +10,10 @@ import {
   chats,
   DeleteAction,
 } from "@/db/chatSchema";
+import { usersTable } from "@/db/userSchema";
+import { socketService } from "@/index";
 import { UploadApiResponse } from "cloudinary";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, not, sql } from "drizzle-orm";
 import { encodeBase64 } from "hono/utils/encode";
 
 export class ChatServices {
@@ -229,6 +231,7 @@ export class ChatServices {
   }) {
     const results = await db
       .select({
+        chat_id: chatMessages.chat_id,
         id: chatMessages.id,
         message: chatMessages.message,
         attachments: chatMessages.attachments,
@@ -236,9 +239,22 @@ export class ChatServices {
         created_at: chatMessages.created_at,
         read_status: chatReadReceipts.status,
         sender_name: sql`
-          (SELECT name FROM users WHERE id = ${chatMessages.sender_id})
+          (SELECT name FROM users WHERE id = ${user_id})
         `.as("sender_name"),
         delete_action: chatMessagesDeletes.delete_action,
+        delete_text: sql`
+        CASE ${chatMessagesDeletes.delete_action}
+    WHEN 'delete_for_me' THEN 'You deleted this message'
+    WHEN 'delete_for_everyone' THEN 
+      CASE 
+        WHEN ${chatMessages.sender_id} = ${user_id} THEN 'You deleted this message for everyone'
+        ELSE 'This message was deleted by the sender'
+      END
+    WHEN 'clear_all_chat' THEN 'You cleared the chat'
+    WHEN 'permanently_delete' THEN 'Message permanently deleted'
+    ELSE NULL
+  END
+`.as("delete_text"),
         reply_data: sql`
         (SELECT json_build_object(
           'id', cm.id,
@@ -254,7 +270,10 @@ export class ChatServices {
       .from(chatMessages)
       .leftJoin(
         chatReadReceipts,
-        eq(chatMessages.id, chatReadReceipts.message_id)
+        and(
+          eq(chatMessages.id, chatReadReceipts.message_id),
+          not(eq(chatReadReceipts.user_id, user_id))
+        )
       )
       .leftJoin(
         chatMessagesDeletes,
@@ -265,6 +284,7 @@ export class ChatServices {
       )
       .leftJoin(
         chatMessagesReply,
+
         eq(chatMessages.id, chatMessagesReply.message_id)
       )
       .where(eq(chatMessages.chat_id, Number(chat_id)))
@@ -293,6 +313,19 @@ export class ChatServices {
         )
       );
 
+    const members = await db
+      .select()
+      .from(chatMembers)
+      .where(eq(chatMembers.chat_id, chat_id));
+
+    members?.forEach((el) => {
+      socketService.sendToUser({
+        event: "markReadMessage",
+        userId: el.user_id,
+        args: [{ chat_id, seen_by: user_id }],
+      });
+    });
+
     return rowCount;
   }
 
@@ -309,7 +342,6 @@ export class ChatServices {
   }) {
     switch (action) {
       case "delete_for_me":
-      case "delete_for_everyone":
       case "permanently_delete": {
         if (!message_ids || message_ids.length === 0) {
           throw new Error("message_ids is required");
@@ -320,6 +352,45 @@ export class ChatServices {
           delete_action: action as DeleteAction,
           chat_id,
         }));
+
+        const data = await db
+          .insert(chatMessagesDeletes)
+          .values(values)
+          .onConflictDoUpdate({
+            target: [
+              chatMessagesDeletes.message_id,
+              chatMessagesDeletes.user_id,
+            ],
+            set: {
+              delete_action: action,
+              deleted_at: new Date(),
+            },
+          })
+          .returning();
+        return data;
+      }
+      case "delete_for_everyone": {
+        if (!message_ids || message_ids.length === 0) {
+          throw new Error("message_ids is required");
+        }
+
+        const members = await db
+          .select()
+          .from(chatMembers)
+          .where(eq(chatMembers.chat_id, chat_id));
+
+        if (members.length === 0) {
+          throw new Error("No members found in the chat");
+        }
+
+        const values = message_ids.flatMap((message_id) =>
+          members.map((member) => ({
+            message_id,
+            user_id: member.user_id,
+            chat_id,
+            delete_action: "delete_for_everyone" as DeleteAction,
+          }))
+        );
 
         const data = await db
           .insert(chatMessagesDeletes)
@@ -366,6 +437,7 @@ export class ChatServices {
           .returning();
         return data;
       }
+
       case "recover": {
         if (!message_ids || message_ids.length === 0) {
           throw new Error("message_ids is required");
@@ -397,5 +469,30 @@ export class ChatServices {
       default:
         throw new Error("Unsupported delete action");
     }
+  }
+
+  async getSingleChatList({ chat_id }: { chat_id: number }) {
+    const [result] = await db
+      .select({
+        chat_id: chats.id,
+        chat_name: chats.name,
+        chat_type: chats.chat_type,
+        created_at: chats.created_at,
+        members: sql`
+        json_agg(
+          json_build_object(
+            'id', users.id,
+            'name', users.name,
+            'email', users.email
+          )
+        )`.as("members"),
+      })
+      .from(chats)
+      .innerJoin(chatMembers, eq(chats.id, chatMembers.chat_id))
+      .innerJoin(usersTable, eq(chatMembers.user_id, usersTable.id))
+      .where(eq(chats.id, chat_id))
+      .groupBy(chats.id);
+
+    return result;
   }
 }

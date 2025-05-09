@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1746102712222,
-      "tag": "0000_legal_clea",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1746104772531,
-      "tag": "0001_dry_outlaw_kid",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1746425646021,
-      "tag": "0002_sweet_azazel",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1746425673267,
-      "tag": "0003_busy_meteorite",
+      "when": 1746779780384,
+      "tag": "0000_low_mikhail_rasputin",
       "breakpoints": true
     }
   ]

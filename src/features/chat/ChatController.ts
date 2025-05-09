@@ -178,4 +178,21 @@ export class ChatController extends BaseController {
       });
     },
   });
+
+  getSingleChatList = responseWrapper({
+    action: "single_chat_list",
+    builder: this.builder,
+    successMsg: "Single Chat List Fetched Successfully",
+    errorMsg: "Not able to get list",
+    handler: async (ctx) => {
+      const { chat_id } = ctx.req.param();
+      const schema = z.coerce.number().safeParse(chat_id);
+
+      if (!schema.success) {
+        throw schema.error;
+      }
+
+      return this.deps.chatServices.getSingleChatList({ chat_id: schema.data });
+    },
+  });
 }

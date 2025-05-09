@@ -14,6 +14,7 @@ export type ServerToClientEvents = {
   sendMessage: (
     message: ChatMessageType & { reply_data: ChatMessageType | null }
   ) => void;
+  markReadMessage: (value: { chat_id: number; seen_by: number }) => void;
 };
 
 declare module "socket.io" {
@@ -33,7 +34,7 @@ class SocketService {
   private init() {
     if (!this.io) {
       this.io = new Server<ServerToClientEvents>(this.server, {
-        cors: { origin: "*" }, // Adjust CORS as needed
+        cors: { origin: "http://localhost:3001" },
       });
 
       // Use a middleware to check the JWT token for each connection
@@ -60,6 +61,8 @@ class SocketService {
     const token = socket.handshake.auth.token
       ? socket.handshake.auth.token
       : socket.handshake.headers.token;
+
+    console.log(token, "token");
 
     if (!token) {
       return next(new Error("No token provided"));

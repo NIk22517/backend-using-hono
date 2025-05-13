@@ -54,8 +54,6 @@ export class AuthController extends BaseController {
     handler: async (ctx) => {
       const { data } = await ctx.req.json();
 
-      console.log(data, "data");
-
       if (!data) {
         throw new Error("Data is not provided");
       }

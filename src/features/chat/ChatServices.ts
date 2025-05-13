@@ -100,18 +100,28 @@ export class ChatServices {
           ) FILTER (WHERE users.id != ${id})
         `.as("members"),
         last_message: sql`
-       (
-         SELECT json_build_object(
-           'message', cm.message,
-           'attachments', cm.attachments,
-           'created_at', cm.created_at
-         )
-         FROM chat_messages cm
-         WHERE cm.chat_id = chats.id
-         ORDER BY cm.created_at DESC
-         LIMIT 1
-       )
-     `.as("last_message"),
+  (
+    SELECT json_build_object(
+      'message',
+        CASE
+          WHEN cmd.message_id IS NOT NULL THEN 'This message is deleted'
+          ELSE cm.message
+        END,
+      'attachments',
+        CASE
+          WHEN cmd.message_id IS NOT NULL THEN '[]'::json
+          ELSE cm.attachments::json
+        END,
+      'created_at', cm.created_at
+    )
+    FROM chat_messages cm
+    LEFT JOIN chat_messages_delete cmd
+       ON cmd.message_id = cm.id AND cmd.user_id = ${id}
+    WHERE cm.chat_id = chats.id
+    ORDER BY cm.created_at DESC
+    LIMIT 1
+  )
+`.as("last_message"),
         unread_count: sql`
        (
          SELECT COUNT(*)
@@ -351,6 +361,7 @@ export class ChatServices {
           user_id,
           delete_action: action as DeleteAction,
           chat_id,
+          deleted_by: user_id,
         }));
 
         const data = await db
@@ -367,6 +378,20 @@ export class ChatServices {
             },
           })
           .returning();
+
+        socketService.sendToUser({
+          event: "deleteMessage",
+          userId: user_id,
+          args: [
+            {
+              action,
+              chat_id,
+              deleted_by: user_id,
+              messages_ids: message_ids,
+            },
+          ],
+        });
+
         return data;
       }
       case "delete_for_everyone": {
@@ -389,6 +414,7 @@ export class ChatServices {
             user_id: member.user_id,
             chat_id,
             delete_action: "delete_for_everyone" as DeleteAction,
+            deleted_by: user_id,
           }))
         );
 
@@ -406,6 +432,22 @@ export class ChatServices {
             },
           })
           .returning();
+
+        members.forEach((el) => {
+          socketService.sendToUser({
+            userId: el.user_id,
+            event: "deleteMessage",
+            args: [
+              {
+                action,
+                chat_id,
+                deleted_by: user_id,
+                messages_ids: message_ids,
+              },
+            ],
+          });
+        });
+
         return data;
       }
       case "clear_all_chat": {
@@ -419,6 +461,7 @@ export class ChatServices {
           user_id,
           delete_action: action as DeleteAction,
           chat_id,
+          deleted_by: user_id,
         }));
 
         const data = await db

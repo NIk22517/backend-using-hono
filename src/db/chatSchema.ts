@@ -93,6 +93,9 @@ export const chatMessagesDeletes = pgTable(
     delete_action: deleteActionEnum("delete_action")
       .notNull()
       .default("recover"),
+    deleted_by: integer()
+      .notNull()
+      .references(() => usersTable.id),
   },
   (table) => [unique().on(table.message_id, table.user_id)]
 );

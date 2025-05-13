@@ -3,7 +3,7 @@ import { verify } from "jsonwebtoken";
 import { JWT_SECRET } from "@/core/utils/EnvValidator";
 import { ServerType } from "@hono/node-server/.";
 import { UserType } from "@/types/hono";
-import { ChatMessageType } from "@/db/chatSchema";
+import { ChatMessageType, DeleteAction } from "@/db/chatSchema";
 
 interface DecodedToken {
   userId: string;
@@ -15,6 +15,12 @@ export type ServerToClientEvents = {
     message: ChatMessageType & { reply_data: ChatMessageType | null }
   ) => void;
   markReadMessage: (value: { chat_id: number; seen_by: number }) => void;
+  deleteMessage: (value: {
+    chat_id: number;
+    action: DeleteAction;
+    messages_ids: number[];
+    deleted_by: number;
+  }) => void;
 };
 
 declare module "socket.io" {
@@ -61,8 +67,6 @@ class SocketService {
     const token = socket.handshake.auth.token
       ? socket.handshake.auth.token
       : socket.handshake.headers.token;
-
-    console.log(token, "token");
 
     if (!token) {
       return next(new Error("No token provided"));

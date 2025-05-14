@@ -6,6 +6,8 @@ import { chatRouter } from "@/features/chat";
 import SocketService from "./config/socket";
 import { cors } from "hono/cors";
 
+const port = parseInt(process.env.PORT ?? "8080", 10);
+
 const app = new Hono().use(
   cors({
     origin: ["http://localhost:3001"],
@@ -19,7 +21,7 @@ app.route("/", chatRouter);
 const server = serve(
   {
     fetch: app.fetch,
-    port: 8080,
+    port: port,
   },
   (info) => {
     console.log(`Server listening on http://localhost:${info.port}`);

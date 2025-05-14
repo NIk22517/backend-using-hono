@@ -13,7 +13,7 @@ import {
 import { usersTable } from "@/db/userSchema";
 import { socketService } from "@/index";
 import { UploadApiResponse } from "cloudinary";
-import { and, desc, eq, inArray, not, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql, ne, isNull, or } from "drizzle-orm";
 import { encodeBase64 } from "hono/utils/encode";
 
 export class ChatServices {
@@ -50,6 +50,24 @@ export class ChatServices {
         .insert(chats)
         .values({
           chat_type: "single",
+          created_by: user_id[user_id.length - 1],
+          name,
+        })
+        .returning();
+
+      await db.insert(chatMembers).values(
+        user_id.map((id) => ({
+          chat_id: newChat.id,
+          user_id: id,
+        }))
+      );
+
+      return { newChat };
+    } else if (user_id.length > 2) {
+      const [newChat] = await db
+        .insert(chats)
+        .values({
+          chat_type: "group",
           created_by: user_id[user_id.length - 1],
           name,
         })
@@ -101,22 +119,26 @@ export class ChatServices {
         `.as("members"),
         last_message: sql`
   (
-    SELECT json_build_object(
-      'message',
-        CASE
-          WHEN cmd.message_id IS NOT NULL THEN 'This message is deleted'
-          ELSE cm.message
-        END,
-      'attachments',
-        CASE
-          WHEN cmd.message_id IS NOT NULL THEN '[]'::json
-          ELSE cm.attachments::json
-        END,
-      'created_at', cm.created_at
-    )
+    SELECT 
+      CASE 
+        WHEN cmd.message_id IS NOT NULL AND cmd.delete_action = 'clear_all_chat' THEN NULL
+        ELSE json_build_object(
+          'message',
+            CASE
+              WHEN cmd.message_id IS NOT NULL THEN 'This message is deleted'
+              ELSE cm.message
+            END,
+          'attachments',
+            CASE
+              WHEN cmd.message_id IS NOT NULL THEN '[]'::json
+              ELSE cm.attachments::json
+            END,
+          'created_at', cm.created_at
+        )
+      END
     FROM chat_messages cm
     LEFT JOIN chat_messages_delete cmd
-       ON cmd.message_id = cm.id AND cmd.user_id = ${id}
+      ON cmd.message_id = cm.id AND cmd.user_id = ${id}
     WHERE cm.chat_id = chats.id
     ORDER BY cm.created_at DESC
     LIMIT 1
@@ -247,7 +269,21 @@ export class ChatServices {
         attachments: chatMessages.attachments,
         sender_id: chatMessages.sender_id,
         created_at: chatMessages.created_at,
-        read_status: chatReadReceipts.status,
+        read_status: sql`
+         (SELECT 
+            CASE
+                WHEN EXISTS (
+                  SELECT 1
+                  FROM chat_read_receipts crr
+                  WHERE crr.message_id = ${chatMessages.id}
+                  AND crr.user_id != ${user_id}
+                  AND crr.status != 'read'
+                )
+                THEN 'unread'
+                ELSE 'read'
+                END
+         )
+        `.as("read_status"),
         sender_name: sql`
           (SELECT name FROM users WHERE id = ${user_id})
         `.as("sender_name"),
@@ -279,13 +315,6 @@ export class ChatServices {
       })
       .from(chatMessages)
       .leftJoin(
-        chatReadReceipts,
-        and(
-          eq(chatMessages.id, chatReadReceipts.message_id),
-          not(eq(chatReadReceipts.user_id, user_id))
-        )
-      )
-      .leftJoin(
         chatMessagesDeletes,
         and(
           eq(chatMessages.id, chatMessagesDeletes.message_id),
@@ -297,7 +326,15 @@ export class ChatServices {
 
         eq(chatMessages.id, chatMessagesReply.message_id)
       )
-      .where(eq(chatMessages.chat_id, Number(chat_id)))
+      .where(
+        and(
+          eq(chatMessages.chat_id, Number(chat_id)),
+          or(
+            isNull(chatMessagesDeletes.delete_action),
+            ne(chatMessagesDeletes.delete_action, "clear_all_chat")
+          )
+        )
+      )
       .orderBy(desc(chatMessages.created_at))
       .limit(limit)
       .offset(offset);
@@ -478,6 +515,23 @@ export class ChatServices {
             },
           })
           .returning();
+        db.update(chats)
+          .set({
+            updated_at: new Date("2024-10-13"),
+          })
+          .where(eq(chats.id, chat_id));
+        socketService.sendToUser({
+          event: "deleteMessage",
+          userId: user_id,
+          args: [
+            {
+              action: "clear_all_chat",
+              chat_id,
+              deleted_by: user_id,
+              messages_ids: [],
+            },
+          ],
+        });
         return data;
       }
 

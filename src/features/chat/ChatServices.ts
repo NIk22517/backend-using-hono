@@ -181,6 +181,8 @@ export class ChatServices {
         {
           folder: folder_name,
           access_mode: "authenticated",
+          filename_override: file.name,
+          resource_type: "auto",
         }
       );
 

@@ -5,6 +5,7 @@ import { userRouter } from "@/features/user";
 import { chatRouter } from "@/features/chat";
 import SocketService from "./config/socket";
 import { cors } from "hono/cors";
+import { aiRouter } from "./features/ai";
 
 const port = parseInt(process.env.PORT ?? "8080", 10);
 
@@ -17,6 +18,7 @@ const app = new Hono().use(
 app.route("/", authRoutes);
 app.route("/", userRouter);
 app.route("/", chatRouter);
+app.route("/", aiRouter);
 
 const server = serve(
   {

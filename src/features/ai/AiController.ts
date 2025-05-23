@@ -17,6 +17,19 @@ export class AiController extends BaseController {
       return ctx.text("Invalid chat ID");
     }
 
+    console.log("call happen");
+
     return this.deps.AiServices.chatSummary({ chat_id: parsed.data, c: ctx });
+  };
+
+  summaryV2 = async (ctx: Context) => {
+    const { chat_id } = ctx.req.param();
+    const parsed = z.coerce.number().safeParse(chat_id);
+    if (!parsed.success) {
+      ctx.status(400);
+      return ctx.text("Invalid chat ID");
+    }
+
+    return this.deps.AiServices.chatSummaryV2({ chat_id: parsed.data, c: ctx });
   };
 }

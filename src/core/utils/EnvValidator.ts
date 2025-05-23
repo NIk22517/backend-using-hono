@@ -9,6 +9,7 @@ const envSchema = z.object({
   CLOUDINARY_CLOUD_NAME: z.string(),
   CLOUDINARY_API_KEY: z.string(),
   CLOUDINARY_API_SECRET: z.string(),
+  OLLAMA_URL: z.string().startsWith("http"),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -18,8 +19,11 @@ if (!parsedEnv.success) {
   process.exit(1);
 }
 
-export const JWT_SECRET = parsedEnv.data.JWT_SECRET;
-export const DATABASE_URL = parsedEnv.data.DATABASE_URL;
-export const CLOUDINARY_CLOUD_NAME = parsedEnv.data.CLOUDINARY_CLOUD_NAME;
-export const CLOUDINARY_API_KEY = parsedEnv.data.CLOUDINARY_API_KEY;
-export const CLOUDINARY_API_SECRET = parsedEnv.data.CLOUDINARY_API_SECRET;
+export const {
+  OLLAMA_URL,
+  CLOUDINARY_API_SECRET,
+  CLOUDINARY_API_KEY,
+  CLOUDINARY_CLOUD_NAME,
+  DATABASE_URL,
+  JWT_SECRET,
+} = parsedEnv.data;

@@ -3,6 +3,7 @@ import { eventEmitter } from "@/core/events/eventEmitter";
 import { db } from "@/db";
 import {
   chatMembers,
+  chatMessageAttachments,
   chatMessages,
   chatMessagesDeletes,
   chatMessagesReply,
@@ -131,12 +132,14 @@ export class ChatServices {
           'attachments',
             CASE
               WHEN cmd.message_id IS NOT NULL THEN '[]'::json
-              ELSE cm.attachments::json
+              ELSE  cma.attachments::json
             END,
           'created_at', cm.created_at
         )
       END
     FROM chat_messages cm
+    LEFT JOIN chat_message_attachments cma
+      ON cm.id = cma.message_id AND cm.chat_id = cma.chat_id
     LEFT JOIN chat_messages_delete cmd
       ON cmd.message_id = cm.id AND cmd.user_id = ${id}
     WHERE cm.chat_id = chats.id
@@ -215,10 +218,18 @@ export class ChatServices {
       .values({
         chat_id: Number(chat_id),
         message,
-        attachments: uploadFiles,
         sender_id,
       })
       .returning();
+
+    if (uploadFiles.length > 0) {
+      await db.insert(chatMessageAttachments).values({
+        added_by: sender_id,
+        chat_id: Number(chat_id),
+        message_id: newMessage.id,
+        attachments: uploadFiles,
+      });
+    }
 
     let reply_data = null;
 
@@ -241,6 +252,7 @@ export class ChatServices {
     eventEmitter.emit("messageSent", {
       message: {
         ...newMessage,
+        attachments: uploadFiles,
         reply_data: reply_data ? { ...reply_data } : reply_data,
       },
       sender_id,
@@ -248,6 +260,7 @@ export class ChatServices {
 
     return {
       ...newMessage,
+      attachments: uploadFiles,
       reply_data: reply_data ? { ...reply_data } : reply_data,
     };
   }
@@ -268,7 +281,7 @@ export class ChatServices {
         chat_id: chatMessages.chat_id,
         id: chatMessages.id,
         message: chatMessages.message,
-        attachments: chatMessages.attachments,
+        attachments: chatMessageAttachments.attachments,
         sender_id: chatMessages.sender_id,
         created_at: chatMessages.created_at,
         read_status: sql`
@@ -307,12 +320,14 @@ export class ChatServices {
         (SELECT json_build_object(
           'id', cm.id,
           'message', cm.message,
-          'attachments', cm.attachments,
+          'attachments', cma.attachments,
           'sender_id', cm.sender_id,
           'created_at', cm.created_at,
           'sender_name', (SELECT name FROM users WHERE id = cm.sender_id)
         )
         FROM chat_messages cm
+        LEFT JOIN chat_message_attachments cma
+          ON cm.id = cma.message_id AND cm.chat_id = cm.chat_id
         WHERE cm.id = ${chatMessagesReply.reply_message_id})`.as("reply_data"),
       })
       .from(chatMessages)
@@ -325,8 +340,14 @@ export class ChatServices {
       )
       .leftJoin(
         chatMessagesReply,
-
         eq(chatMessages.id, chatMessagesReply.message_id)
+      )
+      .leftJoin(
+        chatMessageAttachments,
+        and(
+          eq(chatMessages.id, chatMessageAttachments.message_id),
+          eq(chatMessages.chat_id, chatMessageAttachments.chat_id)
+        )
       )
       .where(
         and(

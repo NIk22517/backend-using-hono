@@ -8,6 +8,13 @@
       "when": 1746779780384,
       "tag": "0000_low_mikhail_rasputin",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1747986088838,
+      "tag": "0001_clear_namora",
+      "breakpoints": true
     }
   ]
 }

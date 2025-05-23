@@ -4,6 +4,7 @@ export {
   chats,
   chatTypeEnum,
   chatMessages,
+  chatMessageAttachments,
   chatReadReceipts,
   chatReadStatus,
   chatMessagesDeletes,

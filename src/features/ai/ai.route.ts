@@ -7,5 +7,6 @@ const controller = new AiController(services);
 const aiRouter = new Hono().basePath("/ai");
 
 aiRouter.get("/summary/:chat_id", controller.summary);
+aiRouter.get("/summary/v2/:chat_id", controller.summaryV2);
 
 export default aiRouter;

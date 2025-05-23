@@ -50,7 +50,21 @@ export const chatMessages = pgTable("chat_messages", {
   message: text("message").default(""),
   created_at: timestamp("created_at").defaultNow(),
   updated_at: timestamp("updated_at").$onUpdateFn(() => new Date()),
+});
+
+export const chatMessageAttachments = pgTable("chat_message_attachments", {
+  id: serial("id").primaryKey(),
+  message_id: integer("message_id")
+    .references(() => chatMessages.id)
+    .notNull(),
+  chat_id: integer("chat_id")
+    .references(() => chats.id)
+    .notNull(),
+  added_by: integer("added_by")
+    .references(() => usersTable.id)
+    .notNull(),
   attachments: json("attachments").$type<UploadApiResponse[]>().default([]),
+  created_at: timestamp("created_at").defaultNow(),
 });
 
 export const chatReadStatus = pgEnum("chat_read_status", ["read", "unread"]);

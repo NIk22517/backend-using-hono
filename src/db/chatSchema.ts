@@ -28,6 +28,21 @@ export const chats = pgTable("chats", {
     .$onUpdateFn(() => new Date()),
 });
 
+export const chatPins = pgTable(
+  "chat_pins",
+  {
+    id: serial("id").primaryKey(),
+    chat_id: integer("chat_id")
+      .references(() => chats.id)
+      .notNull(),
+    pinned_by: integer("pinned_by")
+      .references(() => usersTable.id)
+      .notNull(),
+    pinned_at: timestamp("pinned_at").defaultNow(),
+  },
+  (table) => [unique().on(table.chat_id, table.pinned_by)]
+);
+
 export const chatMembers = pgTable("chat_members", {
   id: serial("id").primaryKey(),
   chat_id: integer("chat_id")

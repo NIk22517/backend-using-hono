@@ -10,4 +10,5 @@ export {
   chatMessagesDeletes,
   deleteActionEnum,
   chatMessagesReply,
+  chatPins,
 } from "./chatSchema";

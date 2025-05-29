@@ -21,6 +21,11 @@ chatRouter.post("/create", async (c) => {
   return c.json(data);
 });
 
+chatRouter.post("/pin", async (c) => {
+  const data = await controller.pinUnpinChat(c);
+  return c.json(data);
+});
+
 chatRouter.post("/send-message", async (c) => {
   const data = await controller.sendMessage(c);
   return c.json(data);

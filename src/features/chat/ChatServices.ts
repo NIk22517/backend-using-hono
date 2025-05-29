@@ -7,6 +7,7 @@ import {
   chatMessages,
   chatMessagesDeletes,
   chatMessagesReply,
+  chatPins,
   chatReadReceipts,
   chats,
   DeleteAction,
@@ -16,6 +17,7 @@ import { socketService } from "@/index";
 import { UploadApiResponse } from "cloudinary";
 import { and, desc, eq, inArray, sql, ne, isNull, or } from "drizzle-orm";
 import { encodeBase64 } from "hono/utils/encode";
+import { PinType } from "./ChatController";
 
 export class ChatServices {
   async createSingleChat({
@@ -154,13 +156,27 @@ export class ChatServices {
          WHERE crr.chat_id = chats.id AND crr.user_id = ${id} AND crr.status = 'unread'
        )
      `.as("unread_count"),
+        is_pinned: sql`bool_or(chat_pins.id IS NOT NULL)`.as("is_pinned"),
       })
       .from(chats)
       .innerJoin(chatMembers, eq(chats.id, chatMembers.chat_id))
       .innerJoin(sql`users`, eq(chatMembers.user_id, sql`users.id`))
+      .leftJoin(
+        chatPins,
+        and(eq(chatPins.chat_id, chats.id), eq(chatPins.pinned_by, id))
+      )
       .where(inArray(chats.id, chatIds))
-      .groupBy(chats.id, chats.name, chats.chat_type, chats.created_at)
-      .orderBy(desc(chats.updated_at))
+      .groupBy(
+        chats.id,
+        chats.name,
+        chats.chat_type,
+        chats.created_at,
+        chatPins.pinned_at
+      )
+      .orderBy(
+        sql`CASE WHEN ${chatPins.pinned_at} IS NOT NULL THEN 1 ELSE 0 END DESC`,
+        desc(chats.updated_at)
+      )
       .limit(limit)
       .offset(offset);
 
@@ -612,6 +628,28 @@ export class ChatServices {
       .innerJoin(usersTable, eq(chatMembers.user_id, usersTable.id))
       .where(eq(chats.id, chat_id))
       .groupBy(chats.id);
+
+    return result;
+  }
+
+  async pinUnpinChat({ chat_id, pinned, pinned_by }: PinType) {
+    if (pinned) {
+      const [result] = await db
+        .insert(chatPins)
+        .values({
+          chat_id,
+          pinned_by,
+        })
+        .returning();
+
+      return result;
+    }
+    const [result] = await db
+      .delete(chatPins)
+      .where(
+        and(eq(chatPins.chat_id, chat_id), eq(chatPins.pinned_by, pinned_by))
+      )
+      .returning();
 
     return result;
   }

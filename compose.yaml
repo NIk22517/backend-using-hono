@@ -13,6 +13,15 @@ services:
     depends_on:
       - db
     command: sh -c "until nc -z db 5432; do sleep 1; done && npx drizzle-kit push && pnpm run dev"
+    develop:
+      watch:
+        - path: ./package.json
+          action: rebuild
+        - path: ./package-lock.yaml
+          action: rebuild
+        - path: .
+          target: /app
+          action: sync
 
   db:
     image: postgres:16-alpine

@@ -8,6 +8,14 @@ const createSchema = z.object({
   name: z.string(),
 });
 
+const pinSchema = z.object({
+  chat_id: z.coerce.number(),
+  pinned_by: z.number(),
+  pinned: z.boolean(),
+});
+
+export type PinType = z.infer<typeof pinSchema>;
+
 export class ChatController extends BaseController {
   constructor(private readonly deps: Services) {
     super("ChatService");
@@ -193,6 +201,29 @@ export class ChatController extends BaseController {
       }
 
       return this.deps.chatServices.getSingleChatList({ chat_id: schema.data });
+    },
+  });
+
+  pinUnpinChat = responseWrapper({
+    action: "pin/unpin chat",
+    successMsg: "Pin/Unpin Successfully",
+    errorMsg: "Error pin/unpin chat",
+    builder: this.builder,
+    handler: async (ctx) => {
+      const user = ctx.get("user");
+      if (!user) {
+        throw new Error("User not exist");
+      }
+
+      const { data } = await ctx.req.json();
+
+      const parse = pinSchema.safeParse({ ...data, pinned_by: user.id });
+
+      if (!parse.success) {
+        throw parse.error;
+      }
+
+      return this.deps.chatServices.pinUnpinChat(parse.data);
     },
   });
 }

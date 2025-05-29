@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/chatdatabase
+    depends_on:
+      - db
+    command: sh -c "until nc -z db 5432; do sleep 1; done && npx drizzle-kit push && pnpm run dev"
+
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: chatdatabase
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - chat_db_data:/var/lib/postgresql/data
+
+volumes:
+  chat_db_data:

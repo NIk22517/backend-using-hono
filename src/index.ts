@@ -6,6 +6,7 @@ import { chatRouter } from "@/features/chat";
 import SocketService from "./config/socket";
 import { cors } from "hono/cors";
 import { aiRouter } from "./features/ai";
+import { startMessageScheduler } from "./core/schedule/MessageSchedule";
 
 const port = parseInt(process.env.PORT ?? "8080", 10);
 
@@ -29,5 +30,7 @@ const server = serve(
     console.log(`Server listening on http://localhost:${info.port}`);
   }
 );
+
+startMessageScheduler();
 
 export const socketService = new SocketService(server);

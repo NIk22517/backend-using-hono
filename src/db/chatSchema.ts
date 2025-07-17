@@ -1,4 +1,5 @@
 import {
+  boolean,
   integer,
   json,
   pgEnum,
@@ -144,7 +145,30 @@ export const chatMessagesReply = pgTable("chat_messages_reply", {
   updated_at: timestamp("updated_at").$onUpdateFn(() => new Date()),
 });
 
-//types
+export const chatScheduleMessages = pgTable("chat_message_schedules", {
+  id: serial("id").primaryKey(),
+
+  chat_id: integer("chat_id")
+    .references(() => chats.id)
+    .notNull(),
+
+  sender_id: integer("sender_id")
+    .references(() => usersTable.id)
+    .notNull(),
+
+  message: text("message").default(""),
+
+  scheduled_at: timestamp("scheduled_at").notNull(),
+
+  timezone: text("timezone").default("UTC"),
+  active: boolean("active").default(true),
+  status: text("status").default("pending"),
+  retry_count: integer("retry_count").default(0),
+  last_attempt_at: timestamp("last_attempt_at"),
+  completed_at: timestamp("completed_at"),
+  error_message: text("error_message"),
+  created_at: timestamp("created_at").defaultNow(),
+});
 
 export type ChatMessageType = InferSelectModel<typeof chatMessages>;
 export type ChatReadReceiptsType = InferInsertModel<typeof chatReadReceipts>;

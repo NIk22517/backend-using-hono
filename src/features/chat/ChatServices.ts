@@ -10,6 +10,7 @@ import {
   chatPins,
   chatReadReceipts,
   chats,
+  chatScheduleMessages,
   DeleteAction,
 } from "@/db/chatSchema";
 import { usersTable } from "@/db/userSchema";
@@ -649,6 +650,31 @@ export class ChatServices {
       .where(
         and(eq(chatPins.chat_id, chat_id), eq(chatPins.pinned_by, pinned_by))
       )
+      .returning();
+
+    return result;
+  }
+
+  async scheduleMessage({
+    chat_id,
+    message,
+    sender_id,
+    scheduled_at,
+  }: {
+    chat_id: number;
+    message: string;
+    sender_id: number;
+    scheduled_at: Date;
+  }) {
+    const [result] = await db
+      .insert(chatScheduleMessages)
+      .values({
+        chat_id,
+        sender_id,
+        message,
+        scheduled_at,
+        timezone: "Asia/Kolkata",
+      })
       .returning();
 
     return result;

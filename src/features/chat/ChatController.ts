@@ -226,4 +226,45 @@ export class ChatController extends BaseController {
       return this.deps.chatServices.pinUnpinChat(parse.data);
     },
   });
+
+  scheduleMessages = responseWrapper({
+    action: "schedule message",
+    errorMsg: "Something went wrong while schedule message",
+    successMsg: "Successfully Schedule Message",
+    builder: this.builder,
+    handler: async (ctx) => {
+      const user = ctx.get("user");
+      if (!user) {
+        throw new Error("User not found");
+      }
+      const data = await ctx.req.formData();
+      const message = data.get("message");
+      const chat_id = data.get("chat_id");
+      const scheduled_at = data.get("scheduled_at");
+
+      const check = z.object({
+        chat_id: z.coerce.number(),
+        message: z.string().default(""),
+        scheduled_at: z.preprocess((arg) => {
+          if (typeof arg === "string" || arg instanceof Date)
+            return new Date(arg);
+        }, z.date()),
+      });
+
+      const parseData = check.safeParse({
+        chat_id,
+        message,
+        scheduled_at,
+      });
+
+      if (!parseData.success) {
+        throw parseData.error;
+      }
+
+      return this.deps.chatServices.scheduleMessage({
+        ...parseData.data,
+        sender_id: user.id,
+      });
+    },
+  });
 }

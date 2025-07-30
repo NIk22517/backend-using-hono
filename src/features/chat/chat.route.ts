@@ -41,6 +41,11 @@ chatRouter.post("/messages/schedule", async (c) => {
   return c.json(data);
 });
 
+chatRouter.get("/schedule", async (c) => {
+  const data = await controller.getScheduleMessage(c);
+  return c.json(data);
+});
+
 chatRouter.get("/read/:chat_id", async (c) => {
   const data = await controller.markAsReadMsg(c);
   return c.json(data);

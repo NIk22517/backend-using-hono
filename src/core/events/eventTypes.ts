@@ -1,4 +1,4 @@
-import { ChatMessageType } from "@/db/chatSchema";
+import { ChatMessageType, ChatScheduleMessagesType } from "@/db/chatSchema";
 import { UploadApiResponse } from "cloudinary";
 
 export type AppEvents = {
@@ -8,4 +8,5 @@ export type AppEvents = {
     };
     sender_id: number;
   }) => void;
+  scheduleMessageTime: (payload: { data: ChatScheduleMessagesType }) => void;
 };

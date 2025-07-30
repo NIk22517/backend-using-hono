@@ -173,3 +173,6 @@ export const chatScheduleMessages = pgTable("chat_message_schedules", {
 export type ChatMessageType = InferSelectModel<typeof chatMessages>;
 export type ChatReadReceiptsType = InferInsertModel<typeof chatReadReceipts>;
 export type DeleteAction = (typeof deleteActionEnum.enumValues)[number];
+export type ChatScheduleMessagesType = InferSelectModel<
+  typeof chatScheduleMessages
+>;

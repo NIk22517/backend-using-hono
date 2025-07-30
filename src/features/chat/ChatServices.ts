@@ -677,6 +677,27 @@ export class ChatServices {
       })
       .returning();
 
+    eventEmitter.emit("scheduleMessageTime", { data: result });
+
+    return result;
+  }
+
+  async getScheduleMessages(user_id: number) {
+    const result = await db
+      .select({
+        id: chatScheduleMessages.id,
+        chat_id: chatScheduleMessages.chat_id,
+        user_id: chatScheduleMessages.sender_id,
+        message: chatScheduleMessages.message,
+        scheduled_at: chatScheduleMessages.scheduled_at,
+        status: chatScheduleMessages.status,
+        retry_count: chatScheduleMessages.retry_count,
+        last_attempt_at: chatScheduleMessages.last_attempt_at,
+        completed_at: chatScheduleMessages.completed_at,
+      })
+      .from(chatScheduleMessages)
+      .where(eq(chatScheduleMessages.sender_id, user_id));
+
     return result;
   }
 }

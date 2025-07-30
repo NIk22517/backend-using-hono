@@ -267,4 +267,18 @@ export class ChatController extends BaseController {
       });
     },
   });
+
+  getScheduleMessage = responseWrapper({
+    action: "get schedule messages",
+    errorMsg: "Something went wrong while getting schedule messages",
+    successMsg: "Successfully get schedule messages",
+    builder: this.builder,
+    handler: async (ctx) => {
+      const user = ctx.get("user");
+      if (!user) {
+        throw new Error("User not found");
+      }
+      return this.deps.chatServices.getScheduleMessages(user.id);
+    },
+  });
 }

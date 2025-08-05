@@ -682,7 +682,13 @@ export class ChatServices {
     return result;
   }
 
-  async getScheduleMessages(user_id: number) {
+  async getScheduleMessages({
+    user_id,
+    chat_id,
+  }: {
+    user_id: number;
+    chat_id: number;
+  }) {
     const result = await db
       .select({
         id: chatScheduleMessages.id,
@@ -694,9 +700,16 @@ export class ChatServices {
         retry_count: chatScheduleMessages.retry_count,
         last_attempt_at: chatScheduleMessages.last_attempt_at,
         completed_at: chatScheduleMessages.completed_at,
+        created_at: chatScheduleMessages.created_at,
       })
       .from(chatScheduleMessages)
-      .where(eq(chatScheduleMessages.sender_id, user_id));
+      .where(
+        and(
+          eq(chatScheduleMessages.sender_id, user_id),
+          eq(chatScheduleMessages.chat_id, chat_id)
+        )
+      )
+      .orderBy(desc(chatScheduleMessages.scheduled_at));
 
     return result;
   }

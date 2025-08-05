@@ -275,10 +275,24 @@ export class ChatController extends BaseController {
     builder: this.builder,
     handler: async (ctx) => {
       const user = ctx.get("user");
+      const { chat_id } = ctx.req.param();
       if (!user) {
         throw new Error("User not found");
       }
-      return this.deps.chatServices.getScheduleMessages(user.id);
+      const check = z.object({
+        chat_id: z.coerce.number(),
+      });
+
+      const parseData = check.safeParse({
+        chat_id,
+      });
+      if (!parseData.success) {
+        throw parseData.error;
+      }
+      return this.deps.chatServices.getScheduleMessages({
+        user_id: user.id,
+        chat_id: parseData.data.chat_id,
+      });
     },
   });
 }

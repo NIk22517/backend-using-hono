@@ -295,4 +295,67 @@ export class ChatController extends BaseController {
       });
     },
   });
+
+  deleteScheduleMessage = responseWrapper({
+    action: "delete_schedule_message",
+    successMsg: "Deleted Successfully",
+    errorMsg: "Something went wrong while deleting schedule message",
+    builder: this.builder,
+    handler: async (ctx) => {
+      const user = ctx.get("user");
+      if (!user) {
+        throw new Error("User not found");
+      }
+      const { schedule_id } = ctx.req.param();
+      const check = z.object({
+        schedule_id: z.coerce.number(),
+        user_id: z.number(),
+      });
+      const parse = check.safeParse({
+        user_id: user.id,
+        schedule_id: schedule_id,
+      });
+
+      if (!parse.success) {
+        throw parse.error;
+      }
+
+      return this.deps.chatServices.deleteScheduleMessage({ ...parse.data });
+    },
+  });
+
+  updateScheduleMessages = responseWrapper({
+    action: "update_schedule_message",
+    successMsg: "Updated Successfully",
+    errorMsg: "Something went wrong while updating schedule message",
+    builder: this.builder,
+    handler: async (ctx) => {
+      const user = ctx.get("user");
+      if (!user) {
+        throw new Error("User not found");
+      }
+      const { data } = await ctx.req.json();
+      const check = z.object({
+        schedule_id: z.coerce.number(),
+        user_id: z.number(),
+        message: z.string().default(""),
+        scheduled_at: z
+          .preprocess((arg) => {
+            if (typeof arg === "string" || arg instanceof Date)
+              return new Date(arg);
+          }, z.date())
+          .optional(),
+      });
+      const parse = check.safeParse({
+        user_id: user.id,
+        ...data,
+      });
+
+      if (!parse.success) {
+        throw parse.error;
+      }
+
+      return this.deps.chatServices.updateScheduleMessages({ ...parse.data });
+    },
+  });
 }

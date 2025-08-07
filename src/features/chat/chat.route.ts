@@ -46,6 +46,16 @@ chatRouter.get("/schedule/:chat_id", async (c) => {
   return c.json(data);
 });
 
+chatRouter.delete("/schedule/:schedule_id", async (c) => {
+  const data = await controller.deleteScheduleMessage(c);
+  return c.json(data);
+});
+
+chatRouter.post("/schedule", async (c) => {
+  const data = await controller.updateScheduleMessages(c);
+  return c.json(data);
+});
+
 chatRouter.get("/read/:chat_id", async (c) => {
   const data = await controller.markAsReadMsg(c);
   return c.json(data);

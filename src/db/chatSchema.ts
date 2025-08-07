@@ -147,19 +147,14 @@ export const chatMessagesReply = pgTable("chat_messages_reply", {
 
 export const chatScheduleMessages = pgTable("chat_message_schedules", {
   id: serial("id").primaryKey(),
-
   chat_id: integer("chat_id")
     .references(() => chats.id)
     .notNull(),
-
   sender_id: integer("sender_id")
     .references(() => usersTable.id)
     .notNull(),
-
   message: text("message").default(""),
-
   scheduled_at: timestamp("scheduled_at").notNull(),
-
   timezone: text("timezone").default("UTC"),
   active: boolean("active").default(true),
   status: text("status").default("pending"),

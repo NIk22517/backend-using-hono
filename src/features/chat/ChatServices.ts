@@ -713,4 +713,62 @@ export class ChatServices {
 
     return result;
   }
+
+  async deleteScheduleMessage({
+    user_id,
+    schedule_id,
+  }: {
+    user_id: number;
+    schedule_id: number;
+  }) {
+    const result = await db
+      .delete(chatScheduleMessages)
+      .where(
+        and(
+          eq(chatScheduleMessages.sender_id, user_id),
+          eq(chatScheduleMessages.id, schedule_id)
+        )
+      )
+      .returning();
+    return result;
+  }
+
+  async updateScheduleMessages({
+    user_id,
+    schedule_id,
+    message,
+    scheduled_at,
+  }: {
+    user_id: number;
+    schedule_id: number;
+    message?: string;
+    scheduled_at?: Date;
+  }) {
+    const updateFields: Partial<typeof chatScheduleMessages.$inferInsert> = {};
+
+    if (message !== undefined) {
+      updateFields.message = message;
+    }
+
+    if (scheduled_at !== undefined) {
+      updateFields.scheduled_at = scheduled_at;
+    }
+
+    if (Object.keys(updateFields).length === 0) {
+      throw new Error("No fields to update");
+    }
+
+    const result = await db
+      .update(chatScheduleMessages)
+      .set(updateFields)
+      .where(
+        and(
+          eq(chatScheduleMessages.sender_id, user_id),
+          eq(chatScheduleMessages.id, schedule_id)
+        )
+      )
+      .returning();
+
+    return result;
+  }
 }

@@ -31,20 +31,20 @@ export class AiService {
       console.log("call happen in services");
 
       const prompt = `You are an AI assistant tasked with summarizing chat conversations.
-Analyze the following chat messages and provide a concise summary of the key topics, decisions, and important information discussed.
-Focus on extracting the most critical points.
+      Analyze the following chat messages and provide a concise summary of the key topics, decisions, and important information discussed.
+      Focus on extracting the most critical points.
 
-Chat Messages:
----
-${messagesText}
----
+      Chat Messages:
+      ---
+      ${messagesText}
+      ---
 
-Summary:`;
+      Summary:`;
 
       const ollamaStream = await axios.post(
         `${OLLAMA_URL}/api/generate`,
         {
-          model: "llama3.2",
+          model: "llama3.2:1b",
           prompt: prompt,
           stream: true,
         },
@@ -52,6 +52,11 @@ Summary:`;
           responseType: "stream",
         }
       );
+
+      c.header("Content-Type", "text/event-stream");
+      c.header("Cache-Control", "no-cache");
+      c.header("Connection", "keep-alive");
+      c.header("Transfer-Encoding", "chunked");
 
       return stream(c, async (stream) => {
         for await (const chunk of ollamaStream.data) {
@@ -67,6 +72,10 @@ Summary:`;
 
               if (json.response) {
                 await stream.write(`${json.response}`);
+              }
+              if (json.done) {
+                await stream.close();
+                return;
               }
             } catch (error) {
               console.error(

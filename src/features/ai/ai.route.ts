@@ -9,7 +9,7 @@ const aiRouter = new Hono().basePath("/ai").use(authMiddleware);
 
 aiRouter.get("/summary/:chat_id", controller.summary);
 aiRouter.get("/summary/v2/:chat_id", controller.summaryV2);
-
 aiRouter.get("/suggestion/:chat_id", controller.suggestion);
+aiRouter.get("/embed", controller.embedMessageText);
 
 export default aiRouter;

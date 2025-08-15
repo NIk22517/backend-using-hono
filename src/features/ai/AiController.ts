@@ -49,4 +49,9 @@ export class AiController extends BaseController {
       user_id: user.id,
     });
   };
+
+  embedMessageText = async (ctx: Context) => {
+    const data = await this.deps.AiServices.embedMessageText();
+    return ctx.json({ data });
+  };
 }

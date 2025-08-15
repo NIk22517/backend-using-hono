@@ -6,6 +6,11 @@ import { stream } from "hono/streaming";
 import { Context } from "hono";
 import { OLLAMA_URL } from "@/core/utils/EnvValidator";
 
+interface NomicEmbeddingResponse {
+  embedding: number[];
+  model: string;
+}
+
 export class AiService {
   async chatSummary({ chat_id, c }: { chat_id: number; c: Context }) {
     try {
@@ -276,6 +281,37 @@ NOW OUTPUT ONLY THE ARRAY:
       return c.json({ suggestions });
     } catch (error) {
       console.error("Error in suggestions:", error);
+      throw error;
+    }
+  }
+
+  async embedMessageText() {
+    const result = await db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.chat_id, 1))
+      .limit(1);
+
+    if (!result.length || !result[0].message) {
+      throw new Error(`No message found for chat_id ${1}`);
+    }
+
+    try {
+      const { data } = await axios.post<NomicEmbeddingResponse>(
+        `${OLLAMA_URL}/api/embeddings`,
+        {
+          model: "nomic-embed-text:v1.5",
+          prompt: result[0].message,
+        },
+        {
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+      console.log(data);
+
+      return data;
+    } catch (error) {
+      console.error("Error fetching embeddings:", error);
       throw error;
     }
   }

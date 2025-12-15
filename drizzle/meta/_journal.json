@@ -15,6 +15,27 @@
       "when": 1747986088838,
       "tag": "0001_clear_namora",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1765802891808,
+      "tag": "0002_unknown_jack_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1765803246431,
+      "tag": "0003_wise_flatman",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1765803907236,
+      "tag": "0004_heavy_vivisector",
+      "breakpoints": true
     }
   ]
 }

@@ -6,7 +6,6 @@ export {
   chatMessages,
   chatMessageAttachments,
   chatReadReceipts,
-  chatReadStatus,
   chatMessagesDeletes,
   deleteActionEnum,
   chatMessagesReply,

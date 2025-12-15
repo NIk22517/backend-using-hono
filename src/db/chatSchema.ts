@@ -83,20 +83,22 @@ export const chatMessageAttachments = pgTable("chat_message_attachments", {
   created_at: timestamp("created_at").defaultNow(),
 });
 
-export const chatReadStatus = pgEnum("chat_read_status", ["read", "unread"]);
-
-export const chatReadReceipts = pgTable("chat_read_receipts", {
-  id: serial("id").primaryKey(),
-  message_id: integer("message_id")
-    .references(() => chatMessages.id)
-    .notNull(),
-  user_id: integer("user_id")
-    .references(() => usersTable.id)
-    .notNull(),
-  status: chatReadStatus("status").default("unread"),
-  read_at: timestamp("read_at").defaultNow(),
-  chat_id: integer("chat_id").references(() => chats.id),
-});
+export const chatReadReceipts = pgTable(
+  "chat_read_receipts",
+  {
+    id: serial("id").primaryKey(),
+    chat_id: integer("chat_id")
+      .references(() => chats.id, { onDelete: "cascade" })
+      .notNull(),
+    user_id: integer("user_id")
+      .references(() => usersTable.id, { onDelete: "cascade" })
+      .notNull(),
+    last_read_message_id: integer("last_read_message_id").references(
+      () => chatMessages.id
+    ),
+  },
+  (table) => [unique().on(table.chat_id, table.user_id)]
+);
 export const deleteActionEnum = pgEnum("delete_action", [
   "delete_for_me",
   "delete_for_everyone",

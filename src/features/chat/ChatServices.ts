@@ -317,7 +317,7 @@ export class ChatServices {
          )
         `.as("read_status"),
         sender_name: sql`
-          (SELECT name FROM users WHERE id = ${user_id})
+          (SELECT name FROM users WHERE id = ${chatMessages.sender_id})
         `.as("sender_name"),
         delete_action: chatMessagesDeletes.delete_action,
         delete_text: sql`

@@ -151,12 +151,15 @@ export class ChatServices {
   )
 `.as("last_message"),
         unread_count: sql`
-       (
-         SELECT COUNT(*)
-         FROM chat_read_receipts crr
-         WHERE crr.chat_id = chats.id AND crr.user_id = ${id} AND crr.status = 'unread'
-       )
-     `.as("unread_count"),
+(
+  SELECT COUNT(*)
+  FROM chat_messages cm
+  LEFT JOIN chat_read_receipts crr
+    ON crr.chat_id = cm.chat_id AND crr.user_id = ${id}
+  WHERE cm.chat_id = chats.id
+    AND (crr.last_read_message_id IS NULL OR cm.id > crr.last_read_message_id)
+)
+`.as("unread_count"),
         is_pinned: sql`bool_or(chat_pins.id IS NOT NULL)`.as("is_pinned"),
       })
       .from(chats)
@@ -302,20 +305,26 @@ export class ChatServices {
         sender_id: chatMessages.sender_id,
         created_at: chatMessages.created_at,
         read_status: sql`
-         (SELECT 
-            CASE
-                WHEN EXISTS (
-                  SELECT 1
-                  FROM chat_read_receipts crr
-                  WHERE crr.message_id = ${chatMessages.id}
-                  AND crr.user_id != ${user_id}
-                  AND crr.status != 'read'
-                )
-                THEN 'unread'
-                ELSE 'read'
-                END
-         )
-        `.as("read_status"),
+  CASE
+    WHEN NOT EXISTS (
+      SELECT 1
+      FROM chat_members cm
+      LEFT JOIN chat_read_receipts crr
+        ON crr.chat_id = cm.chat_id
+       AND crr.user_id = cm.user_id
+      WHERE cm.chat_id = ${chatMessages.chat_id}
+        -- exclude sender
+        AND cm.user_id != ${chatMessages.sender_id}
+        -- unread condition
+        AND (
+          crr.last_read_message_id IS NULL
+          OR crr.last_read_message_id < ${chatMessages.id}
+        )
+    )
+    THEN 'read'
+    ELSE 'unread'
+  END
+`.as("read_status"),
         sender_name: sql`
           (SELECT name FROM users WHERE id = ${chatMessages.sender_id})
         `.as("sender_name"),
@@ -389,16 +398,30 @@ export class ChatServices {
     chat_id: number;
     user_id: number;
   }) {
-    const { rowCount } = await db
-      .update(chatReadReceipts)
-      .set({ status: "read" })
-      .where(
-        and(
-          eq(chatReadReceipts.chat_id, chat_id),
-          eq(chatReadReceipts.user_id, user_id),
-          eq(chatReadReceipts.status, "unread")
-        )
-      );
+    const [lastMessage] = await db
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(eq(chatMessages.chat_id, chat_id))
+      .orderBy(desc(chatMessages.created_at))
+      .limit(1);
+
+    const last_read_id = lastMessage?.id;
+    if (!last_read_id) return null;
+
+    const [receipt] = await db
+      .insert(chatReadReceipts)
+      .values({
+        chat_id,
+        user_id,
+        last_read_message_id: last_read_id,
+      })
+      .onConflictDoUpdate({
+        target: [chatReadReceipts.chat_id, chatReadReceipts.user_id],
+        set: {
+          last_read_message_id: last_read_id,
+        },
+      })
+      .returning();
 
     const members = await db
       .select()
@@ -413,7 +436,7 @@ export class ChatServices {
       });
     });
 
-    return rowCount;
+    return receipt;
   }
 
   async deleteMessages({

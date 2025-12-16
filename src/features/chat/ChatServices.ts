@@ -16,9 +16,10 @@ import {
 import { usersTable } from "@/db/userSchema";
 import { socketService } from "@/index";
 import { UploadApiResponse } from "cloudinary";
-import { and, desc, eq, inArray, sql, ne, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, sql, ne, isNull, or, gte } from "drizzle-orm";
 import { encodeBase64 } from "hono/utils/encode";
 import { PinType } from "./ChatController";
+import { alias } from "drizzle-orm/pg-core";
 
 export class ChatServices {
   async createSingleChat({
@@ -300,48 +301,47 @@ export class ChatServices {
       .select({
         chat_id: chatMessages.chat_id,
         id: chatMessages.id,
-        message: chatMessages.message,
-        attachments: chatMessageAttachments.attachments,
+        message: sql<string | null>`
+          CASE
+            WHEN ${chatMessagesDeletes.delete_action} IS NOT NULL
+              THEN NULL
+              ELSE ${chatMessages.message}
+            END
+        `.as("message"),
+        attachments: sql<UploadApiResponse[] | null>` 
+        CASE
+            WHEN ${chatMessagesDeletes.delete_action} IS NOT NULL
+              THEN NULL
+              ELSE ${chatMessageAttachments.attachments}
+            END
+            `.as("attachments"),
         sender_id: chatMessages.sender_id,
         created_at: chatMessages.created_at,
-        read_status: sql`
-  CASE
-    WHEN NOT EXISTS (
-      SELECT 1
-      FROM chat_members cm
-      LEFT JOIN chat_read_receipts crr
-        ON crr.chat_id = cm.chat_id
-       AND crr.user_id = cm.user_id
-      WHERE cm.chat_id = ${chatMessages.chat_id}
-        -- exclude sender
-        AND cm.user_id != ${chatMessages.sender_id}
-        -- unread condition
-        AND (
-          crr.last_read_message_id IS NULL
-          OR crr.last_read_message_id < ${chatMessages.id}
-        )
-    )
-    THEN 'read'
-    ELSE 'unread'
-  END
-`.as("read_status"),
+        read_status: sql<"read" | "unread">`
+          CASE
+          WHEN ${chatMessages.sender_id} != ${user_id} THEN 'read'
+          WHEN COALESCE(seen_data.seen_all, false) THEN 'read'
+          ELSE 'unread'
+          END
+      `.as("read_status"),
+        seen_by: sql<string[]>`seen_data.seen_by`.as("seen_by"),
+        seen_all: sql<string>`seen_data.seen_all`.as("seen_all"),
         sender_name: sql`
           (SELECT name FROM users WHERE id = ${chatMessages.sender_id})
         `.as("sender_name"),
-        delete_action: chatMessagesDeletes.delete_action,
-        delete_text: sql`
-        CASE ${chatMessagesDeletes.delete_action}
-    WHEN 'delete_for_me' THEN 'You deleted this message'
-    WHEN 'delete_for_everyone' THEN 
-      CASE 
-        WHEN ${chatMessages.sender_id} = ${user_id} THEN 'You deleted this message for everyone'
-        ELSE 'This message was deleted by the sender'
-      END
-    WHEN 'clear_all_chat' THEN 'You cleared the chat'
-    WHEN 'permanently_delete' THEN 'Message permanently deleted'
-    ELSE NULL
-  END
-`.as("delete_text"),
+        delete_text: sql<string | null>`
+          CASE ${chatMessagesDeletes.delete_action}
+              WHEN 'delete_for_me' THEN 'You deleted this message'
+              WHEN 'delete_for_everyone' THEN 
+                CASE 
+                WHEN ${chatMessages.sender_id} = ${user_id} THEN 'You deleted this message for everyone'
+                ELSE 'This message was deleted by the sender'
+              END
+            WHEN 'clear_all_chat' THEN 'You cleared the chat'
+            WHEN 'permanently_delete' THEN 'Message permanently deleted'
+            ELSE NULL
+            END
+        `.as("delete_text"),
         reply_data: sql`
         (SELECT json_build_object(
           'id', cm.id,
@@ -374,6 +374,36 @@ export class ChatServices {
           eq(chatMessages.id, chatMessageAttachments.message_id),
           eq(chatMessages.chat_id, chatMessageAttachments.chat_id)
         )
+      )
+      .leftJoinLateral(
+        db
+          .select({
+            seen_all: sql`COUNT(*) = (
+          SELECT COUNT(*) 
+          FROM chat_members 
+          WHERE chat_id = ${chatMessages.chat_id} 
+          AND user_id != ${chatMessages.sender_id}
+        )`.as("seen_all"),
+            seen_by: sql`ARRAY_AGG(${usersTable.name})`.as("seen_by"),
+          })
+          .from(chatReadReceipts)
+          .innerJoin(
+            chatMembers,
+            and(
+              eq(chatReadReceipts.chat_id, chatMembers.chat_id),
+              eq(chatReadReceipts.user_id, chatMembers.user_id)
+            )
+          )
+          .innerJoin(usersTable, eq(usersTable.id, chatMembers.user_id))
+          .where(
+            and(
+              eq(chatReadReceipts.chat_id, chatMessages.chat_id),
+              gte(chatReadReceipts.last_read_message_id, chatMessages.id),
+              ne(chatMembers.user_id, chatMessages.sender_id)
+            )
+          )
+          .as("seen_data"),
+        sql`true`
       )
       .where(
         and(

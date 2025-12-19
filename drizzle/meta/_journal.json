@@ -36,6 +36,20 @@
       "when": 1765803907236,
       "tag": "0004_heavy_vivisector",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1766148072781,
+      "tag": "0005_wonderful_blacklash",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1766149480647,
+      "tag": "0006_nervous_invisible_woman",
+      "breakpoints": true
     }
   ]
 }

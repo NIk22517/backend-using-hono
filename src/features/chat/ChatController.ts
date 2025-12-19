@@ -5,7 +5,7 @@ import { z } from "zod";
 
 const createSchema = z.object({
   user_ids: z.array(z.coerce.number()),
-  name: z.string(),
+  name: z.string().optional(),
 });
 
 const pinSchema = z.object({
@@ -72,6 +72,21 @@ export class ChatController extends BaseController {
     },
   });
 
+  getConversationContact = responseWrapper({
+    action: "conversation_contact",
+    builder: this.builder,
+    errorMsg: "Error get conversation contact",
+    successMsg: "Successfully get conversation contact",
+    handler: async (ctx) => {
+      const user = ctx.get("user");
+      if (!user) {
+        throw new Error("User not found");
+      }
+      return await this.deps.chatServices.getConversationalContacts({
+        user_id: user.id,
+      });
+    },
+  });
   sendMessage = responseWrapper({
     action: "send_message",
     builder: this.builder,

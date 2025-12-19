@@ -11,6 +11,9 @@ export {
   chatMessagesReply,
   chatPins,
   chatScheduleMessages,
+  systemEventEnum,
+  chatMessageSystemEvents,
+  messageTypeEnum,
 } from "./chatSchema";
 export {
   chatCalls,

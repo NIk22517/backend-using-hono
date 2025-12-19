@@ -16,6 +16,11 @@ chatRouter.get("/list/:chat_id", async (c) => {
   return c.json(data);
 });
 
+chatRouter.get("/conversation-contacts", async (c) => {
+  const data = await controller.getConversationContact(c);
+  return c.json(data);
+});
+
 chatRouter.post("/create", async (c) => {
   const data = await controller.createChat(c);
   return c.json(data);

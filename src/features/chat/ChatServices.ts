@@ -7,11 +7,14 @@ import {
   chatMessages,
   chatMessagesDeletes,
   chatMessagesReply,
+  chatMessageSystemEvents,
   chatPins,
   chatReadReceipts,
   chats,
   chatScheduleMessages,
   DeleteAction,
+  MessageTypeEnum,
+  SystemEventType,
 } from "@/db/chatSchema";
 import { usersTable } from "@/db/userSchema";
 import { socketService } from "@/index";
@@ -22,6 +25,25 @@ import { PinType } from "./ChatController";
 import { alias } from "drizzle-orm/pg-core";
 
 export class ChatServices {
+  async generateGroupName(
+    memberIds: number[],
+    previewCount = 3
+  ): Promise<string> {
+    const users = await db
+      .select({ name: usersTable.name })
+      .from(usersTable)
+      .where(inArray(usersTable.id, memberIds))
+      .limit(previewCount + 1);
+
+    const shown = users.slice(0, previewCount).map((u) => u.name);
+    const remaining = memberIds.length - shown.length;
+
+    if (remaining > 0) {
+      return `${shown.join(", ")} +${remaining} more`;
+    }
+
+    return shown.join(", ");
+  }
   async createSingleChat({
     name,
     user_id,
@@ -47,16 +69,23 @@ export class ChatServices {
 
       if (existing) {
         return {
-          ...existing,
+          newChat: {
+            id: existing.chat_id,
+          },
         };
       }
+
+      const userName = await db
+        .select({ name: usersTable.name })
+        .from(usersTable)
+        .where(eq(usersTable.id, user_id[0]));
 
       const [newChat] = await db
         .insert(chats)
         .values({
           chat_type: "single",
           created_by: user_id[user_id.length - 1],
-          name,
+          name: userName?.[0]?.name,
         })
         .returning();
 
@@ -69,12 +98,13 @@ export class ChatServices {
 
       return { newChat };
     } else if (user_id.length > 2) {
+      const finalName = name ?? (await this.generateGroupName(user_id));
       const [newChat] = await db
         .insert(chats)
         .values({
           chat_type: "group",
           created_by: user_id[user_id.length - 1],
-          name,
+          name: finalName,
         })
         .returning();
 
@@ -84,6 +114,18 @@ export class ChatServices {
           user_id: id,
         }))
       );
+
+      await this.sendMessage({
+        chat_id: newChat.id?.toString(),
+        files: [],
+        message: "",
+        sender_id: user_id[user_id.length - 1],
+        event: "group_created",
+        message_type: "system",
+        metadata: {
+          target_user_ids: user_id,
+        },
+      });
 
       return { newChat };
     }
@@ -158,6 +200,7 @@ export class ChatServices {
   LEFT JOIN chat_read_receipts crr
     ON crr.chat_id = cm.chat_id AND crr.user_id = ${id}
   WHERE cm.chat_id = chats.id
+    AND cm.message_type != 'system'
     AND (crr.last_read_message_id IS NULL OR cm.id > crr.last_read_message_id)
 )
 `.as("unread_count"),
@@ -184,6 +227,22 @@ export class ChatServices {
       )
       .limit(limit)
       .offset(offset);
+
+    return results;
+  }
+
+  async getConversationalContacts({ user_id }: { user_id: number }) {
+    const cm1 = alias(chatMembers, "cm1");
+    const cm2 = alias(chatMembers, "cm2");
+    const results = await db
+      .selectDistinct({
+        id: usersTable.id,
+        name: usersTable.name,
+      })
+      .from(cm1)
+      .innerJoin(cm2, eq(cm1.chat_id, cm2.chat_id))
+      .innerJoin(usersTable, eq(usersTable.id, cm2.user_id))
+      .where(and(eq(cm1.user_id, user_id), ne(cm2.user_id, user_id)));
 
     return results;
   }
@@ -222,12 +281,18 @@ export class ChatServices {
     message,
     sender_id,
     reply_message_id,
+    message_type,
+    event,
+    metadata = {},
   }: {
     chat_id: string;
     message: string;
     files: File[] | null;
     sender_id: number;
     reply_message_id?: string;
+    message_type?: MessageTypeEnum;
+    event?: SystemEventType;
+    metadata?: Record<string, any>;
   }) {
     const uploadFiles = await this.uploadFiles({
       files,
@@ -240,6 +305,7 @@ export class ChatServices {
         chat_id: Number(chat_id),
         message,
         sender_id,
+        message_type,
       })
       .returning();
 
@@ -267,6 +333,18 @@ export class ChatServices {
         chat_id: Number(chat_id),
         message_id: newMessage.id,
         reply_message_id: reply_id,
+      });
+    }
+
+    if (message_type === "system" && event) {
+      await db.insert(chatMessageSystemEvents).values({
+        chat_id: Number(chat_id),
+        event,
+        message_id: newMessage.id,
+        metadata: {
+          actor_id: sender_id,
+          ...metadata,
+        },
       });
     }
 
@@ -301,6 +379,7 @@ export class ChatServices {
       .select({
         chat_id: chatMessages.chat_id,
         id: chatMessages.id,
+        message_type: chatMessages.message_type,
         message: sql<string | null>`
           CASE
             WHEN ${chatMessagesDeletes.delete_action} IS NOT NULL
@@ -355,6 +434,44 @@ export class ChatServices {
         LEFT JOIN chat_message_attachments cma
           ON cm.id = cma.message_id AND cm.chat_id = cm.chat_id
         WHERE cm.id = ${chatMessagesReply.reply_message_id})`.as("reply_data"),
+        system_data: sql<{
+          event: SystemEventType;
+          metadata: {
+            actor: { id: number; name: string };
+            targets?: { id: number; name: string }[];
+          };
+        } | null>`
+                CASE 
+                    WHEN ${chatMessages.message_type} = 'system'
+                      THEN json_build_object(
+                          'event', ${chatMessageSystemEvents.event},
+                          'metadata', json_build_object(
+                          'actor', json_build_object(
+                                'id', ${chatMessages.sender_id},
+                                'name', (
+                                    SELECT name FROM users WHERE id = ${chatMessages.sender_id}
+                                  )
+                            ),
+                          'targets', (
+                                SELECT json_agg(
+                                  json_build_object(
+                                    'id', u.id,
+                                    'name', u.name
+                                  )
+                           )
+                         FROM users u
+                                WHERE u.id IN (
+                                SELECT (value)::int
+                                FROM json_array_elements_text(
+                                  ${chatMessageSystemEvents.metadata} -> 'target_user_ids'
+                              )
+                          )
+                    )
+              )
+            )
+          ELSE NULL
+        END
+      `.as("system_data"),
       })
       .from(chatMessages)
       .leftJoin(
@@ -373,6 +490,13 @@ export class ChatServices {
         and(
           eq(chatMessages.id, chatMessageAttachments.message_id),
           eq(chatMessages.chat_id, chatMessageAttachments.chat_id)
+        )
+      )
+      .leftJoin(
+        chatMessageSystemEvents,
+        and(
+          eq(chatMessages.id, chatMessageSystemEvents.message_id),
+          eq(chatMessages.chat_id, chatMessageSystemEvents.chat_id)
         )
       )
       .leftJoinLateral(

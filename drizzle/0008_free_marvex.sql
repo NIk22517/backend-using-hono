@@ -1,0 +1,2 @@
+ALTER TABLE "chat_messages" ADD COLUMN "parent_message_id" integer;--> statement-breakpoint
+ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_parent_message_id_chat_messages_id_fk" FOREIGN KEY ("parent_message_id") REFERENCES "public"."chat_messages"("id") ON DELETE cascade ON UPDATE no action;

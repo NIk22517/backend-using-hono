@@ -1,5 +1,6 @@
 import {
   boolean,
+  foreignKey,
   index,
   integer,
   json,
@@ -15,7 +16,11 @@ import { usersTable } from "./userSchema";
 import type { UploadApiResponse } from "cloudinary";
 import { InferInsertModel, InferSelectModel } from "drizzle-orm";
 
-export const chatTypeEnum = pgEnum("chat_type", ["single", "group"]);
+export const chatTypeEnum = pgEnum("chat_type", [
+  "single",
+  "group",
+  "broadcast",
+]);
 
 export const chats = pgTable(
   "chats",
@@ -62,8 +67,31 @@ export const chatMembers = pgTable(
     joined_at: timestamp("joined_at").defaultNow(),
   },
   (table) => [
+    unique().on(table.chat_id, table.user_id),
     index("idx_chat_members_user").on(table.user_id),
     index("idx_chat_members_user_chat_id").on(table.chat_id),
+  ]
+);
+
+export const broadcastRecipients = pgTable(
+  "broadcast_recipients",
+  {
+    id: serial("id").primaryKey(),
+    chat_id: integer("chat_id")
+      .references(() => chats.id)
+      .notNull(),
+    recipient_id: integer("recipient_id")
+      .references(() => usersTable.id)
+      .notNull(),
+    joined_at: timestamp("joined_at").defaultNow(),
+  },
+  (table) => [
+    unique("broadcast_recipients_chat_recipient").on(
+      table.chat_id,
+      table.recipient_id
+    ),
+    index("idx_broadcast_recipients_user").on(table.recipient_id),
+    index("idx_broadcast_recipients_chat_id").on(table.chat_id),
   ]
 );
 
@@ -83,10 +111,16 @@ export const chatMessages = pgTable(
     message_type: messageTypeEnum("message_type").default("user"),
     created_at: timestamp("created_at").defaultNow(),
     updated_at: timestamp("updated_at").$onUpdateFn(() => new Date()),
+    parent_message_id: integer("parent_message_id"),
   },
   (table) => [
+    foreignKey({
+      columns: [table.parent_message_id],
+      foreignColumns: [table.id],
+    }).onDelete("cascade"),
     index("idx_messages_chat_created").on(table.chat_id, table.created_at),
     index("idx_messages_sender").on(table.sender_id),
+    index("idx_messages_parent").on(table.parent_message_id),
   ]
 );
 
@@ -148,8 +182,33 @@ export const chatMessageSystemEvents = pgTable(
     index("idx_sys_event_chat_id").on(table.chat_id),
   ]
 );
-export const chatReadReceipts = pgTable(
-  "chat_read_receipts",
+
+export const chatMessageReadReceipts = pgTable(
+  "chat_message_read_receipts",
+  {
+    id: serial("id").primaryKey(),
+    message_id: integer("message_id")
+      .references(() => chatMessages.id, { onDelete: "cascade" })
+      .notNull(),
+    chat_id: integer("chat_id")
+      .references(() => chats.id, { onDelete: "cascade" })
+      .notNull(),
+    user_id: integer("user_id")
+      .references(() => usersTable.id, { onDelete: "cascade" })
+      .notNull(),
+    read_at: timestamp("read_at").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("unique_message_user_read").on(table.message_id, table.user_id),
+    index("idx_msg_read_message_id").on(table.message_id),
+    index("idx_msg_read_user_id").on(table.user_id),
+    index("idx_msg_read_chat_user").on(table.chat_id, table.user_id),
+    index("idx_msg_read_read_at").on(table.read_at),
+  ]
+);
+
+export const chatReadSummary = pgTable(
+  "chat_read_summary",
   {
     id: serial("id").primaryKey(),
     chat_id: integer("chat_id")
@@ -159,14 +218,23 @@ export const chatReadReceipts = pgTable(
       .references(() => usersTable.id, { onDelete: "cascade" })
       .notNull(),
     last_read_message_id: integer("last_read_message_id").references(
-      () => chatMessages.id
+      () => chatMessages.id,
+      { onDelete: "set null" }
     ),
+    last_read_at: timestamp("last_read_at").defaultNow(),
+    unread_count: integer("unread_count").default(0),
+    updated_at: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdateFn(() => new Date()),
   },
   (table) => [
-    unique().on(table.chat_id, table.user_id),
-    index("idx_read_receipts_last_msg").on(table.last_read_message_id),
+    unique("unique_chat_user_summary").on(table.chat_id, table.user_id),
+    index("idx_read_summary_chat").on(table.chat_id),
+    index("idx_read_summary_user").on(table.user_id),
+    index("idx_read_summary_unread").on(table.unread_count),
   ]
 );
+
 export const deleteActionEnum = pgEnum("delete_action", [
   "delete_for_me",
   "delete_for_everyone",
@@ -246,10 +314,14 @@ export const chatScheduleMessages = pgTable("chat_message_schedules", {
 });
 
 export type ChatMessageType = InferSelectModel<typeof chatMessages>;
-export type ChatReadReceiptsType = InferInsertModel<typeof chatReadReceipts>;
+export type ChatMessageReadReceiptType = InferSelectModel<
+  typeof chatMessageReadReceipts
+>;
+export type ChatReadSummaryType = InferSelectModel<typeof chatReadSummary>;
 export type DeleteAction = (typeof deleteActionEnum.enumValues)[number];
 export type ChatScheduleMessagesType = InferSelectModel<
   typeof chatScheduleMessages
 >;
+export type ChatTypeEnum = (typeof chatTypeEnum.enumValues)[number];
 export type MessageTypeEnum = (typeof messageTypeEnum.enumValues)[number];
 export type SystemEventType = (typeof systemEventEnum.enumValues)[number];

@@ -12,7 +12,7 @@ services:
       - DATABASE_URL=postgresql://user:password@db:5432/chatdatabase
     depends_on:
       - db
-    command: sh -c "until nc -z db 5432; do sleep 1; done && npx drizzle-kit push && pnpm run dev"
+    command: sh -c "until nc -z db 5432; do sleep 1; done && pnpm run dev"
     develop:
       watch:
         - path: ./package.json

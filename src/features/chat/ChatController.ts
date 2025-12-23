@@ -2,10 +2,12 @@ import { Services } from "@/core/di/types";
 import { BaseController } from "@/core/http/BaseController";
 import { responseWrapper } from "@/core/http/responseWrapper";
 import { z } from "zod";
+import { chatTypeEnum } from "../../db/chatSchema";
 
 const createSchema = z.object({
   user_ids: z.array(z.coerce.number()),
   name: z.string().optional(),
+  type: z.enum(chatTypeEnum.enumValues),
 });
 
 const pinSchema = z.object({
@@ -39,12 +41,12 @@ export class ChatController extends BaseController {
         throw parseData.error;
       }
 
-      const payload = {
-        user_id: [...parseData.data.user_ids, user.id],
+      return await this.deps.chatServices.createChat({
+        creator_id: user.id,
+        member_ids: parseData.data.user_ids,
+        type: parseData.data.type,
         name: parseData.data.name,
-      };
-
-      return await this.deps.chatServices.createSingleChat(payload);
+      });
     },
   });
 
@@ -145,7 +147,7 @@ export class ChatController extends BaseController {
       const offset = query.offset ? parseInt(query.offset, 10) : 0;
 
       return await this.deps.chatServices.getChatMessages({
-        chat_id,
+        chat_id: Number(chat_id),
         limit,
         offset,
         user_id: user.id,
@@ -371,6 +373,37 @@ export class ChatController extends BaseController {
       }
 
       return this.deps.chatServices.updateScheduleMessages({ ...parse.data });
+    },
+  });
+
+  checkMessageStatus = responseWrapper({
+    action: "check_messages_status",
+    builder: this.builder,
+    errorMsg: "Something went wrong while getting messages status",
+    successMsg: "Successfully get messages status",
+    handler: async (ctx) => {
+      const user = ctx.get("user");
+      if (!user) {
+        throw new Error("User Not Found");
+      }
+      const { chat_id, message_id } = ctx.req.param();
+      const schema = z
+        .object({
+          chat_id: z.coerce.number(),
+          message_id: z.coerce.number(),
+        })
+        .safeParse({
+          chat_id,
+          message_id,
+        });
+      if (!schema.success) {
+        throw schema.error;
+      }
+
+      return this.deps.chatServices.checkStatus({
+        ...schema.data,
+        user_id: user.id,
+      });
     },
   });
 }

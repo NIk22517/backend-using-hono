@@ -2,16 +2,19 @@ import cloudinary from "@/config/cloudinary";
 import { eventEmitter } from "@/core/events/eventEmitter";
 import { db } from "@/db";
 import {
+  broadcastRecipients,
   chatMembers,
   chatMessageAttachments,
+  chatMessageReadReceipts,
   chatMessages,
   chatMessagesDeletes,
   chatMessagesReply,
   chatMessageSystemEvents,
   chatPins,
-  chatReadReceipts,
+  chatReadSummary,
   chats,
   chatScheduleMessages,
+  ChatTypeEnum,
   DeleteAction,
   MessageTypeEnum,
   SystemEventType,
@@ -19,10 +22,34 @@ import {
 import { usersTable } from "@/db/userSchema";
 import { socketService } from "@/index";
 import { UploadApiResponse } from "cloudinary";
-import { and, desc, eq, inArray, sql, ne, isNull, or, gte } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  sql,
+  ne,
+  isNull,
+  lte,
+  isNotNull,
+  or,
+} from "drizzle-orm";
 import { encodeBase64 } from "hono/utils/encode";
 import { PinType } from "./ChatController";
 import { alias } from "drizzle-orm/pg-core";
+
+export type SendMessagePayload = {
+  chat_id: string;
+  message: string;
+  files: File[] | null;
+  sender_id: number;
+  reply_message_id?: string;
+  message_type?: MessageTypeEnum;
+  event?: SystemEventType;
+  metadata?: {
+    target_user_ids?: number[];
+  };
+};
 
 export class ChatServices {
   async generateGroupName(
@@ -44,91 +71,113 @@ export class ChatServices {
 
     return shown.join(", ");
   }
-  async createSingleChat({
+  async createChat({
+    member_ids,
+    creator_id,
+    type,
     name,
-    user_id,
   }: {
-    user_id: number[];
+    creator_id: number;
+    member_ids: number[];
     name?: string;
+    type: ChatTypeEnum;
   }) {
-    if (user_id.length === 2) {
-      const [existing] = await db
-        .select({
-          chat_id: chatMembers.chat_id,
-        })
-        .from(chatMembers)
-        .leftJoin(chats, eq(chatMembers.chat_id, chats.id))
-        .where(
-          and(
-            inArray(chatMembers.user_id, user_id),
-            eq(chats.chat_type, "single")
-          )
-        )
-        .groupBy(chatMembers.chat_id)
-        .having(sql`COUNT(DISTINCT ${chatMembers.user_id}) = 2`);
+    return db.transaction(async (tx) => {
+      if (type === "single") {
+        if (member_ids.length !== 1) {
+          throw new Error("Single chat requires exactly one user");
+        }
+        const otherUserId = member_ids[0];
+        const [existing] = await tx
+          .select({ chat_id: chats.id })
+          .from(chats)
+          .innerJoin(chatMembers, eq(chatMembers.chat_id, chats.id))
+          .where(eq(chats.chat_type, "single"))
+          .groupBy(chats.id).having(sql`
+          COUNT(*) = 2 AND
+          BOOL_AND(${chatMembers.user_id} IN (${creator_id}, ${otherUserId}))
+        `);
+        if (existing) {
+          return { newChat: { id: existing.chat_id } };
+        }
 
-      if (existing) {
-        return {
-          newChat: {
-            id: existing.chat_id,
-          },
-        };
+        const [newChat] = await tx
+          .insert(chats)
+          .values({
+            chat_type: type,
+            created_by: creator_id,
+          })
+          .returning();
+
+        await tx.insert(chatMembers).values([
+          { chat_id: newChat.id, user_id: creator_id },
+          { chat_id: newChat.id, user_id: otherUserId },
+        ]);
+        return { newChat };
       }
 
-      const userName = await db
-        .select({ name: usersTable.name })
-        .from(usersTable)
-        .where(eq(usersTable.id, user_id[0]));
+      if (type === "group") {
+        if (member_ids.length < 2) {
+          throw new Error("Group chat requires at least 2 users");
+        }
+        const finalName =
+          name ?? (await this.generateGroupName([...member_ids, creator_id]));
 
-      const [newChat] = await db
-        .insert(chats)
-        .values({
-          chat_type: "single",
-          created_by: user_id[user_id.length - 1],
-          name: userName?.[0]?.name,
-        })
-        .returning();
+        const [newChat] = await tx
+          .insert(chats)
+          .values({
+            chat_type: type,
+            created_by: creator_id,
+            name: finalName,
+          })
+          .returning();
+        await tx.insert(chatMembers).values(
+          [creator_id, ...member_ids].map((id) => ({
+            chat_id: newChat.id,
+            user_id: id,
+          }))
+        );
+        await this.sendMessage({
+          chat_id: newChat.id.toString(),
+          sender_id: creator_id,
+          message_type: "system",
+          event: "group_created",
+          message: "",
+          files: [],
+          metadata: {
+            target_user_ids: member_ids,
+          },
+        });
+        return { newChat };
+      }
+      if (type === "broadcast") {
+        if (member_ids.length < 1) {
+          throw new Error("Broadcast requires at least one recipient");
+        }
+        const finalName = name ?? (await this.generateGroupName(member_ids));
+        const [newChat] = await tx
+          .insert(chats)
+          .values({
+            chat_type: type,
+            created_by: creator_id,
+            name: finalName,
+          })
+          .returning();
 
-      await db.insert(chatMembers).values(
-        user_id.map((id) => ({
+        await tx.insert(chatMembers).values({
           chat_id: newChat.id,
-          user_id: id,
-        }))
-      );
-
-      return { newChat };
-    } else if (user_id.length > 2) {
-      const finalName = name ?? (await this.generateGroupName(user_id));
-      const [newChat] = await db
-        .insert(chats)
-        .values({
-          chat_type: "group",
-          created_by: user_id[user_id.length - 1],
-          name: finalName,
-        })
-        .returning();
-
-      await db.insert(chatMembers).values(
-        user_id.map((id) => ({
-          chat_id: newChat.id,
-          user_id: id,
-        }))
-      );
-
-      await this.sendMessage({
-        chat_id: newChat.id?.toString(),
-        files: [],
-        message: "",
-        sender_id: user_id[user_id.length - 1],
-        event: "group_created",
-        message_type: "system",
-        metadata: {
-          target_user_ids: user_id,
-        },
-      });
-
-      return { newChat };
-    }
+          user_id: creator_id,
+        });
+        await tx.insert(broadcastRecipients).values(
+          member_ids.map((id) => ({
+            chat_id: newChat.id,
+            recipient_id: id,
+          }))
+        );
+        return { newChat };
+      }
+      throw new Error("Invalid chat type");
+    });
   }
 
   async getAllChats({
@@ -194,16 +243,8 @@ export class ChatServices {
   )
 `.as("last_message"),
         unread_count: sql`
-(
-  SELECT COUNT(*)
-  FROM chat_messages cm
-  LEFT JOIN chat_read_receipts crr
-    ON crr.chat_id = cm.chat_id AND crr.user_id = ${id}
-  WHERE cm.chat_id = chats.id
-    AND cm.message_type != 'system'
-    AND (crr.last_read_message_id IS NULL OR cm.id > crr.last_read_message_id)
-)
-`.as("unread_count"),
+            COALESCE(${chatReadSummary.unread_count}, 0)
+        `.as("unread_count"),
         is_pinned: sql`bool_or(chat_pins.id IS NOT NULL)`.as("is_pinned"),
       })
       .from(chats)
@@ -213,13 +254,21 @@ export class ChatServices {
         chatPins,
         and(eq(chatPins.chat_id, chats.id), eq(chatPins.pinned_by, id))
       )
+      .leftJoin(
+        chatReadSummary,
+        and(
+          eq(chatReadSummary.chat_id, chats.id),
+          eq(chatReadSummary.user_id, id)
+        )
+      )
       .where(inArray(chats.id, chatIds))
       .groupBy(
         chats.id,
         chats.name,
         chats.chat_type,
         chats.created_at,
-        chatPins.pinned_at
+        chatPins.pinned_at,
+        chatReadSummary.unread_count
       )
       .orderBy(
         sql`CASE WHEN ${chatPins.pinned_at} IS NOT NULL THEN 1 ELSE 0 END DESC`,
@@ -275,30 +324,20 @@ export class ChatServices {
     return results;
   }
 
-  async sendMessage({
+  async insertSingleMessage({
     chat_id,
     files,
     message,
     sender_id,
-    reply_message_id,
-    message_type,
     event,
-    metadata = {},
-  }: {
-    chat_id: string;
-    message: string;
-    files: File[] | null;
-    sender_id: number;
-    reply_message_id?: string;
-    message_type?: MessageTypeEnum;
-    event?: SystemEventType;
-    metadata?: Record<string, any>;
-  }) {
+    message_type,
+    metadata,
+    reply_message_id,
+  }: SendMessagePayload) {
     const uploadFiles = await this.uploadFiles({
       files,
       folder_name: `chat_messages_${chat_id}`,
     });
-
     const [newMessage] = await db
       .insert(chatMessages)
       .values({
@@ -348,20 +387,53 @@ export class ChatServices {
       });
     }
 
-    eventEmitter.emit("messageSent", {
-      message: {
-        ...newMessage,
-        attachments: uploadFiles,
-        reply_data: reply_data ? { ...reply_data } : reply_data,
-      },
-      sender_id,
-    });
-
-    return {
+    const returnData = {
       ...newMessage,
       attachments: uploadFiles,
       reply_data: reply_data ? { ...reply_data } : reply_data,
     };
+
+    eventEmitter.emit("messageSent", {
+      message: returnData,
+      sender_id: sender_id,
+    });
+
+    return returnData;
+  }
+
+  async sendMessage(data: SendMessagePayload) {
+    const [checkType] = await db
+      .select()
+      .from(chats)
+      .where(eq(chats.id, Number(data.chat_id)));
+    if (!checkType) throw new Error("Chat not found");
+    const message = await this.insertSingleMessage({ ...data });
+    if (checkType.chat_type === "broadcast") {
+      const broadcast_recipients = await db
+        .select()
+        .from(broadcastRecipients)
+        .where(eq(broadcastRecipients.chat_id, checkType.id));
+
+      for (const { recipient_id } of broadcast_recipients) {
+        const fonudChat = await this.createChat({
+          creator_id: data.sender_id,
+          member_ids: [recipient_id],
+          type: "single",
+        });
+        if ("id" in fonudChat?.newChat) {
+          const childMessage = await this.insertSingleMessage({
+            ...data,
+            chat_id: fonudChat.newChat.id?.toString(),
+          });
+          await db
+            .update(chatMessages)
+            .set({ parent_message_id: message.id })
+            .where(eq(chatMessages.id, childMessage.id));
+        }
+      }
+    }
+
+    return message;
   }
 
   async getChatMessages({
@@ -370,168 +442,80 @@ export class ChatServices {
     limit = 10,
     offset = 0,
   }: {
-    chat_id: string;
+    chat_id: number;
     user_id: number;
     offset?: number;
     limit?: number;
   }) {
-    const results = await db
+    const [chat] = await db
+      .select({ chat_type: chats.chat_type, created_by: chats.created_by })
+      .from(chats)
+      .where(eq(chats.id, chat_id))
+      .limit(1);
+    if (!chat) return [];
+
+    const messages = await db
       .select({
-        chat_id: chatMessages.chat_id,
         id: chatMessages.id,
+        chat_id: chatMessages.chat_id,
         message_type: chatMessages.message_type,
         message: sql<string | null>`
-          CASE
-            WHEN ${chatMessagesDeletes.delete_action} IS NOT NULL
+            CASE
+              WHEN ${chatMessagesDeletes.message_id} IS NOT NULL  
               THEN NULL
               ELSE ${chatMessages.message}
-            END
+              END
         `.as("message"),
-        attachments: sql<UploadApiResponse[] | null>` 
-        CASE
-            WHEN ${chatMessagesDeletes.delete_action} IS NOT NULL
-              THEN NULL
-              ELSE ${chatMessageAttachments.attachments}
+        attachments: sql<UploadApiResponse[] | null>`
+            CASE
+            WHEN ${chatMessagesDeletes.message_id} is NOT NULL
+            THEN NULL
+            ELSE ${chatMessageAttachments.attachments}
             END
-            `.as("attachments"),
+        `.as("attachments"),
         sender_id: chatMessages.sender_id,
         created_at: chatMessages.created_at,
-        read_status: sql<"read" | "unread">`
-          CASE
-          WHEN ${chatMessages.sender_id} != ${user_id} THEN 'read'
-          WHEN COALESCE(seen_data.seen_all, false) THEN 'read'
-          ELSE 'unread'
-          END
-      `.as("read_status"),
-        seen_by: sql<string[]>`seen_data.seen_by`.as("seen_by"),
-        seen_all: sql<string>`seen_data.seen_all`.as("seen_all"),
-        sender_name: sql`
-          (SELECT name FROM users WHERE id = ${chatMessages.sender_id})
-        `.as("sender_name"),
+        sender_name: usersTable.name,
+        reply_message_id: chatMessagesReply.reply_message_id,
+        delete_action: chatMessagesDeletes.delete_action,
         delete_text: sql<string | null>`
-          CASE ${chatMessagesDeletes.delete_action}
+            CASE ${chatMessagesDeletes.delete_action}
               WHEN 'delete_for_me' THEN 'You deleted this message'
-              WHEN 'delete_for_everyone' THEN 
+              WHEN 'delete_for_everyone' THEN
                 CASE 
-                WHEN ${chatMessages.sender_id} = ${user_id} THEN 'You deleted this message for everyone'
-                ELSE 'This message was deleted by the sender'
-              END
-            WHEN 'clear_all_chat' THEN 'You cleared the chat'
-            WHEN 'permanently_delete' THEN 'Message permanently deleted'
-            ELSE NULL
+                WHEN ${chatMessages.sender_id} = ${user_id}
+                THEN 'You deleted this message for everyone'
+                ELSE 'This message was deleted'
+                END
+              WHEN 'permanently_delete' THEN 'Message permanently deleted'
+              WHEN 'clear_all_chat' THEN 'You cleared the chat'
+              ELSE NULL
             END
         `.as("delete_text"),
-        reply_data: sql`
-        (SELECT json_build_object(
-          'id', cm.id,
-          'message', cm.message,
-          'attachments', cma.attachments,
-          'sender_id', cm.sender_id,
-          'created_at', cm.created_at,
-          'sender_name', (SELECT name FROM users WHERE id = cm.sender_id)
-        )
-        FROM chat_messages cm
-        LEFT JOIN chat_message_attachments cma
-          ON cm.id = cma.message_id AND cm.chat_id = cm.chat_id
-        WHERE cm.id = ${chatMessagesReply.reply_message_id})`.as("reply_data"),
-        system_data: sql<{
-          event: SystemEventType;
-          metadata: {
-            actor: { id: number; name: string };
-            targets?: { id: number; name: string }[];
-          };
-        } | null>`
-                CASE 
-                    WHEN ${chatMessages.message_type} = 'system'
-                      THEN json_build_object(
-                          'event', ${chatMessageSystemEvents.event},
-                          'metadata', json_build_object(
-                          'actor', json_build_object(
-                                'id', ${chatMessages.sender_id},
-                                'name', (
-                                    SELECT name FROM users WHERE id = ${chatMessages.sender_id}
-                                  )
-                            ),
-                          'targets', (
-                                SELECT json_agg(
-                                  json_build_object(
-                                    'id', u.id,
-                                    'name', u.name
-                                  )
-                           )
-                         FROM users u
-                                WHERE u.id IN (
-                                SELECT (value)::int
-                                FROM json_array_elements_text(
-                                  ${chatMessageSystemEvents.metadata} -> 'target_user_ids'
-                              )
-                          )
-                    )
-              )
-            )
-          ELSE NULL
-        END
-      `.as("system_data"),
       })
       .from(chatMessages)
       .leftJoin(
         chatMessagesDeletes,
         and(
-          eq(chatMessages.id, chatMessagesDeletes.message_id),
+          eq(chatMessagesDeletes.message_id, chatMessages.id),
           eq(chatMessagesDeletes.user_id, user_id)
         )
       )
       .leftJoin(
-        chatMessagesReply,
-        eq(chatMessages.id, chatMessagesReply.message_id)
-      )
-      .leftJoin(
         chatMessageAttachments,
-        and(
-          eq(chatMessages.id, chatMessageAttachments.message_id),
-          eq(chatMessages.chat_id, chatMessageAttachments.chat_id)
-        )
+        eq(chatMessageAttachments.message_id, chatMessages.id)
       )
+      .leftJoin(usersTable, eq(usersTable.id, chatMessages.sender_id))
       .leftJoin(
-        chatMessageSystemEvents,
+        chatMessagesReply,
         and(
-          eq(chatMessages.id, chatMessageSystemEvents.message_id),
-          eq(chatMessages.chat_id, chatMessageSystemEvents.chat_id)
+          eq(chatMessagesReply.chat_id, chatMessages.chat_id),
+          eq(chatMessagesReply.message_id, chatMessages.id)
         )
-      )
-      .leftJoinLateral(
-        db
-          .select({
-            seen_all: sql`COUNT(*) = (
-          SELECT COUNT(*) 
-          FROM chat_members 
-          WHERE chat_id = ${chatMessages.chat_id} 
-          AND user_id != ${chatMessages.sender_id}
-        )`.as("seen_all"),
-            seen_by: sql`ARRAY_AGG(${usersTable.name})`.as("seen_by"),
-          })
-          .from(chatReadReceipts)
-          .innerJoin(
-            chatMembers,
-            and(
-              eq(chatReadReceipts.chat_id, chatMembers.chat_id),
-              eq(chatReadReceipts.user_id, chatMembers.user_id)
-            )
-          )
-          .innerJoin(usersTable, eq(usersTable.id, chatMembers.user_id))
-          .where(
-            and(
-              eq(chatReadReceipts.chat_id, chatMessages.chat_id),
-              gte(chatReadReceipts.last_read_message_id, chatMessages.id),
-              ne(chatMembers.user_id, chatMessages.sender_id)
-            )
-          )
-          .as("seen_data"),
-        sql`true`
       )
       .where(
         and(
-          eq(chatMessages.chat_id, Number(chat_id)),
+          eq(chatMessages.chat_id, chat_id),
           or(
             isNull(chatMessagesDeletes.delete_action),
             ne(chatMessagesDeletes.delete_action, "clear_all_chat")
@@ -541,6 +525,187 @@ export class ChatServices {
       .orderBy(desc(chatMessages.created_at))
       .limit(limit)
       .offset(offset);
+
+    if (!messages?.length) return [];
+
+    const replyIds = [
+      ...new Set(
+        messages
+          .map((m) => m.reply_message_id)
+          .filter((id): id is number => !!id)
+      ),
+    ];
+
+    const replyMessages = replyIds.length
+      ? await db
+          .select({
+            id: chatMessages.id,
+            messages: chatMessages.message,
+            attachments: chatMessageAttachments.attachments,
+            sender_id: chatMessages.sender_id,
+            created_at: chatMessages.created_at,
+            sender_name: usersTable.name,
+          })
+          .from(chatMessages)
+          .leftJoin(
+            chatMessageAttachments,
+            eq(chatMessageAttachments.message_id, chatMessages.id)
+          )
+          .leftJoin(usersTable, eq(usersTable.id, chatMessages.sender_id))
+          .where(
+            and(
+              inArray(chatMessages.id, replyIds),
+              eq(chatMessages.chat_id, chat_id)
+            )
+          )
+      : [];
+
+    const replyMap = new Map<number, (typeof replyMessages)[number]>();
+    for (const r of replyMessages) {
+      replyMap.set(r.id, r);
+    }
+
+    const recipients =
+      chat.chat_type === "broadcast"
+        ? await db
+            .select({
+              user_id: broadcastRecipients.recipient_id,
+              name: usersTable.name,
+            })
+            .from(broadcastRecipients)
+            .leftJoin(
+              usersTable,
+              eq(usersTable.id, broadcastRecipients.recipient_id)
+            )
+            .where(eq(broadcastRecipients.chat_id, chat_id))
+        : await db
+            .select({ user_id: chatMembers.user_id, name: usersTable.name })
+            .from(chatMembers)
+            .leftJoin(usersTable, eq(usersTable.id, chatMembers.user_id))
+            .where(eq(chatMembers.chat_id, chat_id));
+
+    const memberMap = new Map(recipients.map((r) => [r.user_id, r.name]));
+
+    const systemMessageIds = messages
+      .filter((m) => m.message_type === "system")
+      .map((m) => m.id);
+
+    const systemRows = systemMessageIds.length
+      ? await db
+          .select()
+          .from(chatMessageSystemEvents)
+          .where(
+            and(
+              inArray(chatMessageSystemEvents.message_id, systemMessageIds),
+              eq(chatMessageSystemEvents.chat_id, chat_id)
+            )
+          )
+      : [];
+
+    const systemMap = new Map<
+      number,
+      {
+        event: string;
+        actor: { user_id: number; name: string };
+        targets?: { user_id: number; name: string }[];
+      }
+    >();
+
+    for (const system of systemRows) {
+      const { message_id, event, metadata } = system;
+      if (!event || !metadata) continue;
+
+      systemMap.set(message_id, {
+        event,
+        actor: {
+          user_id: metadata.actor_id,
+          name: memberMap.get(metadata.actor_id) ?? "Unknown",
+        },
+        targets: metadata.target_user_ids?.map((uid) => ({
+          user_id: uid,
+          name: memberMap.get(uid) ?? "Unknown",
+        })),
+      });
+    }
+
+    const messageIds = messages.map((m) => m.id);
+    const readMap = new Map<number, Set<number>>();
+
+    if (chat.chat_type !== "broadcast") {
+      const rows = await db
+        .select({
+          message_id: chatMessageReadReceipts.message_id,
+          user_id: chatMessageReadReceipts.user_id,
+        })
+        .from(chatMessageReadReceipts)
+        .where(
+          and(
+            eq(chatMessageReadReceipts.chat_id, chat_id),
+            inArray(chatMessageReadReceipts.message_id, messageIds)
+          )
+        );
+
+      for (const r of rows) {
+        if (!readMap.has(r.message_id)) {
+          readMap.set(r.message_id, new Set());
+        }
+        readMap.get(r.message_id)!.add(r.user_id);
+      }
+    } else {
+      const rows = await db
+        .select({
+          parent_message_id: chatMessages.parent_message_id,
+          child_message_id: chatMessages.id,
+          user_id: chatMessageReadReceipts.user_id,
+        })
+        .from(chatMessages)
+        .leftJoin(
+          chatMessageReadReceipts,
+          eq(chatMessageReadReceipts.message_id, chatMessages.id)
+        )
+        .where(
+          and(
+            isNotNull(chatMessages.parent_message_id),
+            inArray(chatMessages.parent_message_id, messageIds)
+          )
+        );
+
+      for (const r of rows) {
+        if (!r.parent_message_id) continue;
+
+        if (!readMap.has(r.parent_message_id)) {
+          readMap.set(r.parent_message_id, new Set());
+        }
+
+        if (r.user_id) {
+          readMap.get(r.parent_message_id)!.add(r.user_id);
+        }
+      }
+    }
+
+    const results = messages.map((msg) => {
+      const readers = readMap.get(msg.id) ?? new Set<number>();
+
+      const eligibleRecipients = [...memberMap.keys()].filter(
+        (uid) => uid !== msg.sender_id
+      );
+
+      const read_by = eligibleRecipients.filter((uid) => readers.has(uid));
+      const unread_by = eligibleRecipients.filter((uid) => !readers.has(uid));
+
+      return {
+        ...msg,
+        reply_data: msg.reply_message_id
+          ? replyMap.get(msg.reply_message_id) ?? null
+          : null,
+        system_data:
+          msg.message_type === "system" ? systemMap.get(msg.id) ?? null : null,
+        read_by: read_by.map((id) => memberMap.get(id)!),
+        unread_by: unread_by.map((id) => memberMap.get(id)!),
+        read_status: unread_by.length === 0 ? "read" : "unread",
+        seen_all: unread_by.length === 0,
+      };
+    });
 
     return results;
   }
@@ -555,24 +720,71 @@ export class ChatServices {
     const [lastMessage] = await db
       .select({ id: chatMessages.id })
       .from(chatMessages)
-      .where(eq(chatMessages.chat_id, chat_id))
+      .where(
+        and(
+          eq(chatMessages.chat_id, chat_id),
+          ne(chatMessages.message_type, "system")
+        )
+      )
       .orderBy(desc(chatMessages.created_at))
       .limit(1);
 
-    const last_read_id = lastMessage?.id;
-    if (!last_read_id) return null;
+    if (!lastMessage) return null;
+    const last_read_message_id = lastMessage.id;
+
+    const unreadMessages = await db
+      .select({
+        message_id: chatMessages.id,
+        chat_id: chatMessages.chat_id,
+      })
+      .from(chatMessages)
+      .leftJoin(
+        chatMessageReadReceipts,
+        and(
+          eq(chatMessageReadReceipts.chat_id, chatMessages.chat_id),
+          eq(chatMessageReadReceipts.message_id, chatMessages.id),
+          eq(chatMessageReadReceipts.user_id, user_id)
+        )
+      )
+      .where(
+        and(
+          eq(chatMessages.chat_id, chat_id),
+          ne(chatMessages.message_type, "system"),
+          ne(chatMessages.sender_id, user_id),
+          isNull(chatMessageReadReceipts.id),
+          lte(chatMessages.id, last_read_message_id)
+        )
+      );
+
+    if (unreadMessages.length > 0) {
+      await db
+        .insert(chatMessageReadReceipts)
+        .values(
+          unreadMessages.map((el) => ({
+            chat_id: el.chat_id,
+            message_id: el.message_id,
+            user_id,
+          }))
+        )
+        .onConflictDoNothing();
+    }
 
     const [receipt] = await db
-      .insert(chatReadReceipts)
+      .insert(chatReadSummary)
       .values({
         chat_id,
         user_id,
-        last_read_message_id: last_read_id,
+        last_read_message_id,
+        unread_count: 0,
+        last_read_at: new Date(),
       })
       .onConflictDoUpdate({
-        target: [chatReadReceipts.chat_id, chatReadReceipts.user_id],
+        target: [chatReadSummary.chat_id, chatReadSummary.user_id],
         set: {
-          last_read_message_id: last_read_id,
+          last_read_message_id,
+          unread_count: 0,
+          last_read_at: new Date(),
+          updated_at: new Date(),
         },
       })
       .returning();
@@ -792,20 +1004,37 @@ export class ChatServices {
         chat_name: chats.name,
         chat_type: chats.chat_type,
         created_at: chats.created_at,
-        members: sql`
-        json_agg(
-          json_build_object(
-            'id', users.id,
-            'name', users.name,
-            'email', users.email
-          )
-        )`.as("members"),
+        members: sql<{ id: number; name: string; email: string }>`
+            CASE
+              WHEN ${chats.chat_type} = 'broadcast' THEN (
+                SELECT json_agg(
+                  json_build_object(
+                    'id', u1.id,
+                    'name', u1.name,
+                    'email', u1.email
+                  )
+                )
+                FROM ${broadcastRecipients} br
+                INNER JOIN ${usersTable} u1 on u1.id = br.recipient_id
+                WHERE br.chat_id = ${chats}.id
+              )
+              ELSE (
+                SELECT json_agg(
+                  json_build_object(
+                    'id', u2.id,
+                    'name', u2.name,
+                    'email', u2.email
+                  )
+                )
+                FROM ${chatMembers} cm
+                INNER JOIN ${usersTable} u2 on u2.id = cm.user_id
+                WHERE cm.chat_id = ${chats}.id
+              )
+              END
+        `.as("members"),
       })
       .from(chats)
-      .innerJoin(chatMembers, eq(chats.id, chatMembers.chat_id))
-      .innerJoin(usersTable, eq(chatMembers.user_id, usersTable.id))
-      .where(eq(chats.id, chat_id))
-      .groupBy(chats.id);
+      .where(eq(chats.id, chat_id));
 
     return result;
   }
@@ -947,5 +1176,102 @@ export class ChatServices {
       .returning();
 
     return result;
+  }
+
+  async checkStatus({
+    chat_id,
+    user_id,
+    message_id,
+  }: {
+    chat_id: number;
+    user_id: number;
+    message_id: number;
+  }) {
+    const [foundChat] = await db
+      .select()
+      .from(chats)
+      .where(eq(chats.id, chat_id));
+
+    if (!foundChat) throw new Error("No chat found");
+
+    if (foundChat.chat_type === "broadcast") {
+      const childMessages = await db
+        .select({ id: chatMessages.id })
+        .from(chatMessages)
+        .where(eq(chatMessages.parent_message_id, message_id));
+
+      if (!childMessages.length) return { statuses: [] };
+
+      const childIds = childMessages.map((m) => m.id);
+
+      const receipts = await db
+        .select({
+          message_id: chatMessageReadReceipts.message_id,
+          user_id: chatMessageReadReceipts.user_id,
+        })
+        .from(chatMessageReadReceipts)
+        .where(inArray(chatMessageReadReceipts.message_id, childIds));
+
+      const recipients = await db
+        .select({
+          user_id: broadcastRecipients.recipient_id,
+        })
+        .from(broadcastRecipients)
+        .where(eq(broadcastRecipients.chat_id, chat_id));
+
+      const receiptMap = new Map<number, Set<number>>();
+      for (const r of receipts) {
+        if (!receiptMap.has(r.user_id)) receiptMap.set(r.user_id, new Set());
+        receiptMap.get(r.user_id)!.add(r.message_id);
+      }
+
+      const statuses = recipients.map((r) => {
+        const readChildIds = receiptMap.get(r.user_id) ?? new Set();
+        return {
+          user_id: r.user_id,
+          status: readChildIds.size ? "read" : "delivered",
+        };
+      });
+
+      return { statuses };
+    } else {
+      const receipt = await db
+        .select({
+          message_id: chatMessageReadReceipts.message_id,
+          user_id: chatMessageReadReceipts.user_id,
+        })
+        .from(chatMessageReadReceipts)
+        .where(
+          and(
+            eq(chatMessageReadReceipts.message_id, message_id),
+            eq(chatMessageReadReceipts.chat_id, chat_id)
+          )
+        );
+
+      const receiptMap = new Set<number>();
+
+      for (const r of receipt) {
+        const { user_id } = r;
+        receiptMap.add(user_id);
+      }
+
+      const recipients = await db
+        .select({
+          user_id: chatMembers.user_id,
+        })
+        .from(chatMembers)
+        .where(
+          and(
+            eq(chatMembers.chat_id, chat_id),
+            ne(chatMembers.user_id, user_id)
+          )
+        );
+
+      const statuses = recipients.map((el) => {
+        const hasRead = receiptMap.has(el.user_id);
+        return { user_id: el.user_id, status: hasRead ? "read" : "delivered" };
+      });
+      return statuses;
+    }
   }
 }

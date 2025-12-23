@@ -71,4 +71,9 @@ chatRouter.post("/messages/delete", async (c) => {
   return c.json(data);
 });
 
+chatRouter.get("/read-status/:chat_id/:message_id", async (c) => {
+  const data = await controller.checkMessageStatus(c);
+  return c.json(data);
+});
+
 export default chatRouter;

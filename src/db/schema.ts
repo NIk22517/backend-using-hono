@@ -5,7 +5,6 @@ export {
   chatTypeEnum,
   chatMessages,
   chatMessageAttachments,
-  chatReadReceipts,
   chatMessagesDeletes,
   deleteActionEnum,
   chatMessagesReply,
@@ -14,6 +13,9 @@ export {
   systemEventEnum,
   chatMessageSystemEvents,
   messageTypeEnum,
+  broadcastRecipients,
+  chatMessageReadReceipts,
+  chatReadSummary,
 } from "./chatSchema";
 export {
   chatCalls,

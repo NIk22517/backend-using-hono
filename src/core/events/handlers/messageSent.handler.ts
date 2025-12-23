@@ -1,6 +1,11 @@
-import { chatMembers, chatReadReceipts, chats } from "@/db/schema";
+import {
+  chatMembers,
+  chatMessageReadReceipts,
+  chatReadSummary,
+  chats,
+} from "@/db/schema";
 import { db } from "@/db";
-import { eq, or } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { AppEvents } from "../eventTypes";
 import { socketService } from "@/index";
 
@@ -17,16 +22,42 @@ export const messageSentHandler = async ({
     .where(eq(chatMembers.chat_id, chat_id));
 
   await db
-    .insert(chatReadReceipts)
+    .insert(chatMessageReadReceipts)
     .values({
+      message_id: message.id,
       chat_id,
       user_id: sender_id,
-      last_read_message_id: message.id,
     })
+    .onConflictDoNothing();
+
+  await db
+    .insert(chatReadSummary)
+    .values(
+      members.map((m) => ({
+        chat_id,
+        user_id: m.user_id,
+        unread_count: m.user_id === sender_id ? 0 : 1,
+        last_read_message_id: m.user_id === sender_id ? message.id : null,
+      }))
+    )
     .onConflictDoUpdate({
-      target: [chatReadReceipts.chat_id, chatReadReceipts.user_id],
+      target: [chatReadSummary.chat_id, chatReadSummary.user_id],
       set: {
-        last_read_message_id: message.id,
+        unread_count: sql`
+          CASE
+            WHEN ${chatReadSummary.user_id} = ${sender_id}
+              THEN 0
+            ELSE ${chatReadSummary.unread_count} + 1
+          END
+        `,
+        last_read_message_id: sql`
+          CASE
+            WHEN ${chatReadSummary.user_id} = ${sender_id}
+              THEN ${message.id}
+            ELSE ${chatReadSummary.last_read_message_id}
+          END
+        `,
+        updated_at: new Date(),
       },
     });
 

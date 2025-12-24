@@ -49,6 +49,7 @@ export type SendMessagePayload = {
   metadata?: {
     target_user_ids?: number[];
   };
+  reuseAttachments?: UploadApiResponse[] | null;
 };
 
 export class ChatServices {
@@ -333,11 +334,18 @@ export class ChatServices {
     message_type,
     metadata,
     reply_message_id,
+    reuseAttachments = null,
   }: SendMessagePayload) {
-    const uploadFiles = await this.uploadFiles({
-      files,
-      folder_name: `chat_messages_${chat_id}`,
-    });
+    let uploadFiles: UploadApiResponse[] = [];
+    if (files && files?.length > 0 && !reuseAttachments) {
+      uploadFiles = await this.uploadFiles({
+        files,
+        folder_name: `chat_messages_${chat_id}`,
+      });
+    } else if (reuseAttachments && reuseAttachments.length > 0) {
+      uploadFiles = reuseAttachments;
+    }
+
     const [newMessage] = await db
       .insert(chatMessages)
       .values({
@@ -424,6 +432,8 @@ export class ChatServices {
           const childMessage = await this.insertSingleMessage({
             ...data,
             chat_id: fonudChat.newChat.id?.toString(),
+            files: [],
+            reuseAttachments: message.attachments,
           });
           await db
             .update(chatMessages)
@@ -816,6 +826,14 @@ export class ChatServices {
     user_id: number;
     chat_id: number;
   }) {
+    const [chat_data] = await db
+      .select()
+      .from(chats)
+      .where(eq(chats.id, chat_id));
+
+    if (!chat_data) {
+      throw new Error("Chat not found");
+    }
     switch (action) {
       case "delete_for_me":
       case "permanently_delete": {
@@ -865,8 +883,99 @@ export class ChatServices {
           throw new Error("message_ids is required");
         }
 
+        if (chat_data.chat_type === "broadcast") {
+          const childMessages = await db
+            .select({
+              message_id: chatMessages.id,
+              chat_id: chatMessages.chat_id,
+            })
+            .from(chatMessages)
+            .where(inArray(chatMessages.parent_message_id, message_ids));
+
+          if (!childMessages.length) return [];
+
+          const members = await db
+            .select({
+              chat_id: chatMembers.chat_id,
+              user_id: chatMembers.user_id,
+            })
+            .from(chatMembers)
+            .where(
+              and(
+                inArray(
+                  chatMembers.chat_id,
+                  childMessages.map((m) => m.chat_id)
+                ),
+                ne(chatMembers.user_id, user_id)
+              )
+            );
+
+          const recipientByChat = new Map<number, number>();
+
+          for (const m of members) {
+            if (m.user_id !== user_id) {
+              recipientByChat.set(m.chat_id, m.user_id);
+            }
+          }
+
+          const deleteValues = childMessages.flatMap((msg) => {
+            const recipientId = recipientByChat.get(msg.chat_id);
+
+            if (!recipientId) {
+              throw new Error(`Recipient not found for chat ${msg.chat_id}`);
+            }
+
+            return [
+              {
+                message_id: msg.message_id,
+                chat_id: msg.chat_id,
+                user_id: recipientId,
+                delete_action: "delete_for_everyone" as DeleteAction,
+                deleted_by: user_id,
+              },
+              {
+                message_id: msg.message_id,
+                chat_id: msg.chat_id,
+                user_id: user_id,
+                delete_action: "delete_for_everyone" as DeleteAction,
+                deleted_by: user_id,
+              },
+            ];
+          });
+
+          await db
+            .insert(chatMessagesDeletes)
+            .values(deleteValues)
+            .onConflictDoUpdate({
+              target: [
+                chatMessagesDeletes.message_id,
+                chatMessagesDeletes.user_id,
+              ],
+              set: {
+                delete_action: action,
+                deleted_at: new Date(),
+              },
+            })
+            .returning();
+
+          deleteValues.forEach((el) => {
+            socketService.sendToUser({
+              userId: el.user_id,
+              event: "deleteMessage",
+              args: [
+                {
+                  action,
+                  chat_id: el.chat_id,
+                  deleted_by: user_id,
+                  messages_ids: [el.message_id],
+                },
+              ],
+            });
+          });
+        }
+
         const members = await db
-          .select()
+          .select({ user_id: chatMembers.user_id })
           .from(chatMembers)
           .where(eq(chatMembers.chat_id, chat_id));
 

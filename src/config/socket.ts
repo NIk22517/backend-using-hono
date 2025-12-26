@@ -3,7 +3,7 @@ import { verify } from "jsonwebtoken";
 import { JWT_SECRET } from "@/core/utils/EnvValidator";
 import { ServerType } from "@hono/node-server/.";
 import { UserType } from "@/types/hono";
-import { ChatMessageType, DeleteAction } from "@/db/chatSchema";
+import { ChatMessageType, MessageDeleteAction } from "@/db/chatSchema";
 import { CallType } from "../db/callSchema";
 
 // ==== Types ====
@@ -15,7 +15,7 @@ export type ServerToClientEvents = {
   markReadMessage: (value: { chat_id: number; seen_by: number }) => void;
   deleteMessage: (value: {
     chat_id: number;
-    action: DeleteAction;
+    action: MessageDeleteAction | "clear_chat";
     messages_ids: number[];
     deleted_by: number;
   }) => void;

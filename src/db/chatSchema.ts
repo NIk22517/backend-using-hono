@@ -235,39 +235,58 @@ export const chatReadSummary = pgTable(
   ]
 );
 
-export const deleteActionEnum = pgEnum("delete_action", [
-  "delete_for_me",
-  "delete_for_everyone",
-  "clear_all_chat",
-  "permanently_delete",
-  "recover",
-  "recover_all_chat",
+export const messageDeleteActionEnum = pgEnum("message_delete_action", [
+  "self",
+  "everyone",
 ]);
 
-export const chatMessagesDeletes = pgTable(
-  "chat_messages_delete",
+export const chatMessageDeletes = pgTable(
+  "chat_message_deletes",
   {
     id: serial("id").primaryKey(),
+
     message_id: integer("message_id")
-      .references(() => chatMessages.id)
-      .notNull(),
-    user_id: integer("user_id")
-      .references(() => usersTable.id)
-      .notNull(),
-    chat_id: integer("chat_id")
-      .references(() => chats.id)
-      .notNull(),
-    deleted_at: timestamp("deleted_at").defaultNow(),
-    delete_action: deleteActionEnum("delete_action")
       .notNull()
-      .default("recover"),
-    deleted_by: integer()
+      .references(() => chatMessages.id, { onDelete: "cascade" }),
+
+    chat_id: integer("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+
+    user_id: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+
+    delete_action: messageDeleteActionEnum("delete_action").notNull(),
+
+    deleted_by: integer("deleted_by")
       .notNull()
       .references(() => usersTable.id),
+
+    deleted_at: timestamp("deleted_at").defaultNow(),
   },
   (table) => [
     unique().on(table.message_id, table.user_id),
     index("idx_msg_delete_chat_user").on(table.chat_id, table.user_id),
+    index("idx_msg_delete_message").on(table.message_id),
+  ]
+);
+
+export const chatClearStates = pgTable(
+  "chat_clear_states",
+  {
+    id: serial("id").primaryKey(),
+    chat_id: integer("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    user_id: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    cleared_at: timestamp("cleared_at").notNull().defaultNow(),
+  },
+  (table) => [
+    unique().on(table.chat_id, table.user_id),
+    index("idx_clear_chat_user").on(table.chat_id, table.user_id),
   ]
 );
 
@@ -318,7 +337,8 @@ export type ChatMessageReadReceiptType = InferSelectModel<
   typeof chatMessageReadReceipts
 >;
 export type ChatReadSummaryType = InferSelectModel<typeof chatReadSummary>;
-export type DeleteAction = (typeof deleteActionEnum.enumValues)[number];
+export type MessageDeleteAction =
+  (typeof messageDeleteActionEnum.enumValues)[number];
 export type ChatScheduleMessagesType = InferSelectModel<
   typeof chatScheduleMessages
 >;

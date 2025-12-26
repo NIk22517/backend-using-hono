@@ -71,6 +71,20 @@
       "when": 1766410107106,
       "tag": "0009_big_adam_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1766731326706,
+      "tag": "0010_big_tomas",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1766733353590,
+      "tag": "0011_mean_captain_marvel",
+      "breakpoints": true
     }
   ]
 }

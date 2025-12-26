@@ -7,7 +7,7 @@ import {
   chatMessageAttachments,
   chatMessageReadReceipts,
   chatMessages,
-  chatMessagesDeletes,
+  chatMessageDeletes,
   chatMessagesReply,
   chatMessageSystemEvents,
   chatPins,
@@ -15,9 +15,10 @@ import {
   chats,
   chatScheduleMessages,
   ChatTypeEnum,
-  DeleteAction,
+  MessageDeleteAction,
   MessageTypeEnum,
   SystemEventType,
+  chatClearStates,
 } from "@/db/chatSchema";
 import { usersTable } from "@/db/userSchema";
 import { socketService } from "@/index";
@@ -33,10 +34,19 @@ import {
   lte,
   isNotNull,
   or,
+  gte,
+  gt,
+  lt,
+  asc,
 } from "drizzle-orm";
 import { encodeBase64 } from "hono/utils/encode";
-import { PinType } from "./ChatController";
+import { ChatMessagesParam, PinType } from "./ChatController";
 import { alias } from "drizzle-orm/pg-core";
+import {
+  ChatMessage,
+  ChatMessagesResponse,
+  PagingInfo,
+} from "@/types/chatTypes";
 
 export type SendMessagePayload = {
   chat_id: string;
@@ -218,7 +228,7 @@ export class ChatServices {
   (
     SELECT 
       CASE 
-        WHEN cmd.message_id IS NOT NULL AND cmd.delete_action = 'clear_all_chat' THEN NULL
+        WHEN cmd.message_id IS NOT NULL THEN NULL
         ELSE json_build_object(
           'message',
             CASE
@@ -230,13 +240,14 @@ export class ChatServices {
               WHEN cmd.message_id IS NOT NULL THEN '[]'::json
               ELSE  cma.attachments::json
             END,
-          'created_at', cm.created_at
+          'created_at', cm.created_at,
+          'message_id', cm.id
         )
       END
     FROM chat_messages cm
     LEFT JOIN chat_message_attachments cma
       ON cm.id = cma.message_id AND cm.chat_id = cma.chat_id
-    LEFT JOIN chat_messages_delete cmd
+    LEFT JOIN chat_message_deletes cmd
       ON cmd.message_id = cm.id AND cmd.user_id = ${id}
     WHERE cm.chat_id = chats.id
     ORDER BY cm.created_at DESC
@@ -450,19 +461,77 @@ export class ChatServices {
     chat_id,
     user_id,
     limit = 10,
-    offset = 0,
-  }: {
-    chat_id: number;
-    user_id: number;
-    offset?: number;
-    limit?: number;
-  }) {
+    after_id,
+    before_id,
+    around_id,
+    equal_id,
+  }: ChatMessagesParam & { equal_id?: number }): Promise<ChatMessagesResponse> {
     const [chat] = await db
       .select({ chat_type: chats.chat_type, created_by: chats.created_by })
       .from(chats)
       .where(eq(chats.id, chat_id))
       .limit(1);
-    if (!chat) return [];
+    if (!chat) {
+      throw new Error("Chat not found");
+    }
+
+    if (around_id) {
+      console.log({
+        limit: Math.floor(limit / 2),
+        limit2: Math.ceil(limit / 2),
+        around_id,
+      });
+      const target = await this.getChatMessages({
+        chat_id,
+        limit: 1,
+        user_id,
+        equal_id: around_id,
+      });
+      const older = await this.getChatMessages({
+        chat_id,
+        user_id,
+        limit: Math.floor(limit / 2),
+        before_id: around_id,
+      });
+
+      const newer = await this.getChatMessages({
+        chat_id,
+        user_id,
+        limit: Math.ceil(limit / 2),
+        after_id: around_id,
+      });
+
+      console.log({ older, newer });
+
+      const combined = [...newer.data, ...target.data, ...older.data];
+
+      return {
+        data: combined,
+        paging: {
+          has_older: older.paging.has_older,
+          has_newer: newer.paging.has_newer,
+          oldest_id: combined[combined.length - 1]?.id ?? null,
+          newest_id: combined[0]?.id ?? null,
+          limit,
+        },
+      };
+    }
+
+    let cursorCondition;
+    let orderDirection;
+
+    if (before_id) {
+      cursorCondition = lt(chatMessages.id, before_id);
+      orderDirection = desc(chatMessages.id);
+    } else if (after_id) {
+      cursorCondition = gt(chatMessages.id, after_id);
+      orderDirection = asc(chatMessages.id);
+    } else if (equal_id) {
+      cursorCondition = eq(chatMessages.id, equal_id);
+      orderDirection = desc(chatMessages.id);
+    } else {
+      orderDirection = desc(chatMessages.id);
+    }
 
     const messages = await db
       .select({
@@ -471,14 +540,14 @@ export class ChatServices {
         message_type: chatMessages.message_type,
         message: sql<string | null>`
             CASE
-              WHEN ${chatMessagesDeletes.message_id} IS NOT NULL  
+              WHEN ${chatMessageDeletes.message_id} IS NOT NULL  
               THEN NULL
               ELSE ${chatMessages.message}
               END
         `.as("message"),
         attachments: sql<UploadApiResponse[] | null>`
             CASE
-            WHEN ${chatMessagesDeletes.message_id} is NOT NULL
+            WHEN ${chatMessageDeletes.message_id} is NOT NULL
             THEN NULL
             ELSE ${chatMessageAttachments.attachments}
             END
@@ -487,28 +556,26 @@ export class ChatServices {
         created_at: chatMessages.created_at,
         sender_name: usersTable.name,
         reply_message_id: chatMessagesReply.reply_message_id,
-        delete_action: chatMessagesDeletes.delete_action,
+        delete_action: chatMessageDeletes.delete_action,
         delete_text: sql<string | null>`
-            CASE ${chatMessagesDeletes.delete_action}
-              WHEN 'delete_for_me' THEN 'You deleted this message'
-              WHEN 'delete_for_everyone' THEN
+            CASE ${chatMessageDeletes.delete_action}
+              WHEN 'self' THEN 'You deleted this message'
+              WHEN 'everyone' THEN
                 CASE 
                 WHEN ${chatMessages.sender_id} = ${user_id}
                 THEN 'You deleted this message for everyone'
                 ELSE 'This message was deleted'
                 END
-              WHEN 'permanently_delete' THEN 'Message permanently deleted'
-              WHEN 'clear_all_chat' THEN 'You cleared the chat'
               ELSE NULL
             END
         `.as("delete_text"),
       })
       .from(chatMessages)
       .leftJoin(
-        chatMessagesDeletes,
+        chatMessageDeletes,
         and(
-          eq(chatMessagesDeletes.message_id, chatMessages.id),
-          eq(chatMessagesDeletes.user_id, user_id)
+          eq(chatMessageDeletes.message_id, chatMessages.id),
+          eq(chatMessageDeletes.user_id, user_id)
         )
       )
       .leftJoin(
@@ -523,24 +590,47 @@ export class ChatServices {
           eq(chatMessagesReply.message_id, chatMessages.id)
         )
       )
+      .leftJoin(
+        chatClearStates,
+        and(
+          eq(chatClearStates.chat_id, chatMessages.chat_id),
+          eq(chatClearStates.user_id, user_id)
+        )
+      )
       .where(
         and(
           eq(chatMessages.chat_id, chat_id),
           or(
-            isNull(chatMessagesDeletes.delete_action),
-            ne(chatMessagesDeletes.delete_action, "clear_all_chat")
-          )
+            isNull(chatClearStates.cleared_at),
+            gt(chatMessages.created_at, chatClearStates.cleared_at)
+          ),
+          cursorCondition
         )
       )
-      .orderBy(desc(chatMessages.created_at))
-      .limit(limit)
-      .offset(offset);
+      .orderBy(orderDirection)
+      .limit(limit + 1);
 
-    if (!messages?.length) return [];
+    if (!messages?.length)
+      return {
+        data: [],
+        paging: {
+          has_older: false,
+          has_newer: false,
+          oldest_id: null,
+          newest_id: null,
+          limit: 0,
+        },
+      };
+
+    const hasExtra = messages.length > limit;
+
+    const sliced = hasExtra ? messages.slice(0, limit) : messages;
+
+    const normalizedMessages = after_id ? sliced.reverse() : sliced;
 
     const replyIds = [
       ...new Set(
-        messages
+        normalizedMessages
           .map((m) => m.reply_message_id)
           .filter((id): id is number => !!id)
       ),
@@ -550,7 +640,7 @@ export class ChatServices {
       ? await db
           .select({
             id: chatMessages.id,
-            messages: chatMessages.message,
+            message: chatMessages.message,
             attachments: chatMessageAttachments.attachments,
             sender_id: chatMessages.sender_id,
             created_at: chatMessages.created_at,
@@ -596,7 +686,7 @@ export class ChatServices {
 
     const memberMap = new Map(recipients.map((r) => [r.user_id, r.name]));
 
-    const systemMessageIds = messages
+    const systemMessageIds = normalizedMessages
       .filter((m) => m.message_type === "system")
       .map((m) => m.id);
 
@@ -638,7 +728,7 @@ export class ChatServices {
       });
     }
 
-    const messageIds = messages.map((m) => m.id);
+    const messageIds = normalizedMessages.map((m) => m.id);
     const readMap = new Map<number, Set<number>>();
 
     if (chat.chat_type !== "broadcast") {
@@ -693,7 +783,7 @@ export class ChatServices {
       }
     }
 
-    const results = messages.map((msg) => {
+    const results: ChatMessage[] = normalizedMessages.map((msg) => {
       const readers = readMap.get(msg.id) ?? new Set<number>();
 
       const eligibleRecipients = [...memberMap.keys()].filter(
@@ -706,10 +796,13 @@ export class ChatServices {
       return {
         ...msg,
         reply_data: msg.reply_message_id
-          ? replyMap.get(msg.reply_message_id) ?? null
+          ? (replyMap.get(msg.reply_message_id) as ChatMessage["reply_data"]) ??
+            null
           : null,
         system_data:
-          msg.message_type === "system" ? systemMap.get(msg.id) ?? null : null,
+          msg.message_type === "system"
+            ? (systemMap.get(msg.id) as ChatMessage["system_data"]) ?? null
+            : null,
         read_by: read_by.map((id) => memberMap.get(id)!),
         unread_by: unread_by.map((id) => memberMap.get(id)!),
         read_status: unread_by.length === 0 ? "read" : "unread",
@@ -717,7 +810,21 @@ export class ChatServices {
       };
     });
 
-    return results;
+    const newestId = results[0]?.id ?? null;
+    const oldestId = results[results.length - 1]?.id ?? null;
+
+    const paging: PagingInfo = {
+      has_older: before_id ? hasExtra : !after_id && hasExtra,
+      has_newer: after_id ? hasExtra : false,
+      oldest_id: oldestId,
+      newest_id: newestId,
+      limit,
+    };
+
+    return {
+      data: results,
+      paging,
+    };
   }
 
   async markAsReadMsg({
@@ -822,7 +929,7 @@ export class ChatServices {
     chat_id,
   }: {
     message_ids?: number[];
-    action: DeleteAction;
+    action: MessageDeleteAction | "clear_chat";
     user_id: number;
     chat_id: number;
   }) {
@@ -834,28 +941,82 @@ export class ChatServices {
     if (!chat_data) {
       throw new Error("Chat not found");
     }
+
     switch (action) {
-      case "delete_for_me":
-      case "permanently_delete": {
+      case "self": {
         if (!message_ids || message_ids.length === 0) {
           throw new Error("message_ids is required");
         }
+
+        if (chat_data.chat_type === "broadcast") {
+          const allChildMessages = await db
+            .select({
+              message_id: chatMessages.id,
+              chat_id: chatMessages.chat_id,
+              parent_message_id: chatMessages.parent_message_id,
+            })
+            .from(chatMessages)
+            .where(
+              and(
+                inArray(chatMessages.parent_message_id, message_ids),
+                eq(chatMessages.sender_id, user_id)
+              )
+            );
+
+          const deleteValues = allChildMessages.map((el) => {
+            return {
+              message_id: el.message_id,
+              user_id,
+              delete_action: action,
+              chat_id: el.chat_id,
+              deleted_by: user_id,
+            };
+          });
+
+          await db
+            .insert(chatMessageDeletes)
+            .values(deleteValues)
+            .onConflictDoUpdate({
+              target: [
+                chatMessageDeletes.message_id,
+                chatMessageDeletes.user_id,
+              ],
+              set: {
+                delete_action: action,
+                deleted_at: new Date(),
+              },
+            })
+            .returning();
+
+          deleteValues.forEach((el) => {
+            socketService.sendToUser({
+              userId: el.user_id,
+              event: "deleteMessage",
+              args: [
+                {
+                  action,
+                  chat_id: el.chat_id,
+                  deleted_by: user_id,
+                  messages_ids: [el.message_id],
+                },
+              ],
+            });
+          });
+        }
+
         const values = message_ids.map((id) => ({
           message_id: id,
           user_id,
-          delete_action: action as DeleteAction,
+          delete_action: action,
           chat_id,
           deleted_by: user_id,
         }));
 
         const data = await db
-          .insert(chatMessagesDeletes)
+          .insert(chatMessageDeletes)
           .values(values)
           .onConflictDoUpdate({
-            target: [
-              chatMessagesDeletes.message_id,
-              chatMessagesDeletes.user_id,
-            ],
+            target: [chatMessageDeletes.message_id, chatMessageDeletes.user_id],
             set: {
               delete_action: action,
               deleted_at: new Date(),
@@ -878,7 +1039,7 @@ export class ChatServices {
 
         return data;
       }
-      case "delete_for_everyone": {
+      case "everyone": {
         if (!message_ids || message_ids.length === 0) {
           throw new Error("message_ids is required");
         }
@@ -930,26 +1091,26 @@ export class ChatServices {
                 message_id: msg.message_id,
                 chat_id: msg.chat_id,
                 user_id: recipientId,
-                delete_action: "delete_for_everyone" as DeleteAction,
+                delete_action: action,
                 deleted_by: user_id,
               },
               {
                 message_id: msg.message_id,
                 chat_id: msg.chat_id,
                 user_id: user_id,
-                delete_action: "delete_for_everyone" as DeleteAction,
+                delete_action: action,
                 deleted_by: user_id,
               },
             ];
           });
 
           await db
-            .insert(chatMessagesDeletes)
+            .insert(chatMessageDeletes)
             .values(deleteValues)
             .onConflictDoUpdate({
               target: [
-                chatMessagesDeletes.message_id,
-                chatMessagesDeletes.user_id,
+                chatMessageDeletes.message_id,
+                chatMessageDeletes.user_id,
               ],
               set: {
                 delete_action: action,
@@ -988,19 +1149,16 @@ export class ChatServices {
             message_id,
             user_id: member.user_id,
             chat_id,
-            delete_action: "delete_for_everyone" as DeleteAction,
+            delete_action: action,
             deleted_by: user_id,
           }))
         );
 
         const data = await db
-          .insert(chatMessagesDeletes)
+          .insert(chatMessageDeletes)
           .values(values)
           .onConflictDoUpdate({
-            target: [
-              chatMessagesDeletes.message_id,
-              chatMessagesDeletes.user_id,
-            ],
+            target: [chatMessageDeletes.message_id, chatMessageDeletes.user_id],
             set: {
               delete_action: action,
               deleted_at: new Date(),
@@ -1022,83 +1180,38 @@ export class ChatServices {
             ],
           });
         });
-
         return data;
       }
-      case "clear_all_chat": {
-        const allMessages = await db
-          .select()
-          .from(chatMessages)
-          .where(eq(chatMessages.chat_id, chat_id));
-
-        const values = allMessages.map((message) => ({
-          message_id: message.id,
-          user_id,
-          delete_action: action as DeleteAction,
-          chat_id,
-          deleted_by: user_id,
-        }));
-
+      case "clear_chat": {
         const data = await db
-          .insert(chatMessagesDeletes)
-          .values(values)
+          .insert(chatClearStates)
+          .values({
+            chat_id,
+            user_id,
+            cleared_at: new Date(),
+          })
           .onConflictDoUpdate({
-            target: [
-              chatMessagesDeletes.message_id,
-              chatMessagesDeletes.user_id,
-            ],
+            target: [chatClearStates.chat_id, chatClearStates.user_id],
             set: {
-              delete_action: action,
-              deleted_at: new Date(),
+              chat_id,
+              user_id,
+              cleared_at: new Date(),
             },
           })
           .returning();
-        db.update(chats)
-          .set({
-            updated_at: new Date("2024-10-13"),
-          })
-          .where(eq(chats.id, chat_id));
+
         socketService.sendToUser({
-          event: "deleteMessage",
           userId: user_id,
+          event: "deleteMessage",
           args: [
             {
-              action: "clear_all_chat",
-              chat_id,
+              action: "clear_chat",
+              chat_id: chat_id,
               deleted_by: user_id,
               messages_ids: [],
             },
           ],
         });
-        return data;
-      }
-
-      case "recover": {
-        if (!message_ids || message_ids.length === 0) {
-          throw new Error("message_ids is required");
-        }
-
-        const data = await db
-          .delete(chatMessagesDeletes)
-          .where(
-            and(
-              eq(chatMessagesDeletes.user_id, user_id),
-              inArray(chatMessagesDeletes.message_id, message_ids)
-            )
-          )
-          .returning();
-        return data;
-      }
-      case "recover_all_chat": {
-        const data = await db
-          .delete(chatMessagesDeletes)
-          .where(
-            and(
-              eq(chatMessagesDeletes.user_id, user_id),
-              eq(chatMessagesDeletes.chat_id, chat_id)
-            )
-          )
-          .returning();
         return data;
       }
       default:

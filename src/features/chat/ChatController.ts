@@ -16,6 +16,24 @@ const pinSchema = z.object({
   pinned: z.boolean(),
 });
 
+const chatMessagesQuerySchema = z
+  .object({
+    user_id: z.coerce.number().int().positive(),
+    chat_id: z.coerce.number().int().positive(),
+    limit: z.coerce.number().int().min(1).max(50).default(20),
+    before_id: z.coerce.number().int().positive().optional(),
+    after_id: z.coerce.number().int().positive().optional(),
+    around_id: z.coerce.number().optional(),
+  })
+  .refine(
+    (v) => [v.before_id, v.after_id, v.around_id].filter(Boolean).length <= 1,
+    {
+      message: "Use only one of before_id, after_id or around_id",
+    }
+  );
+
+export type ChatMessagesParam = z.infer<typeof chatMessagesQuerySchema>;
+
 export type PinType = z.infer<typeof pinSchema>;
 
 export class ChatController extends BaseController {
@@ -143,14 +161,18 @@ export class ChatController extends BaseController {
       }
       const query = ctx.req.query();
 
-      const limit = query.limit ? parseInt(query.limit, 10) : 10;
-      const offset = query.offset ? parseInt(query.offset, 10) : 0;
+      const payload = chatMessagesQuerySchema.safeParse({
+        chat_id,
+        user_id: user.id,
+        ...query,
+      });
+
+      if (!payload.success) {
+        throw payload.error;
+      }
 
       return await this.deps.chatServices.getChatMessages({
-        chat_id: Number(chat_id),
-        limit,
-        offset,
-        user_id: user.id,
+        ...payload.data,
       });
     },
   });

@@ -476,11 +476,6 @@ export class ChatServices {
     }
 
     if (around_id) {
-      console.log({
-        limit: Math.floor(limit / 2),
-        limit2: Math.ceil(limit / 2),
-        around_id,
-      });
       const target = await this.getChatMessages({
         chat_id,
         limit: 1,
@@ -500,8 +495,6 @@ export class ChatServices {
         limit: Math.ceil(limit / 2),
         after_id: around_id,
       });
-
-      console.log({ older, newer });
 
       const combined = [...newer.data, ...target.data, ...older.data];
 

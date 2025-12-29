@@ -1,5 +1,6 @@
 import {
   boolean,
+  customType,
   foreignKey,
   index,
   integer,
@@ -14,7 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { usersTable } from "./userSchema";
 import type { UploadApiResponse } from "cloudinary";
-import { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { InferInsertModel, InferSelectModel, SQL, sql } from "drizzle-orm";
 
 export const chatTypeEnum = pgEnum("chat_type", [
   "single",
@@ -95,6 +96,14 @@ export const broadcastRecipients = pgTable(
   ]
 );
 
+export const tsvector = customType<{
+  data: string;
+}>({
+  dataType() {
+    return `tsvector`;
+  },
+});
+
 export const messageTypeEnum = pgEnum("message_type", ["user", "system"]);
 
 export const chatMessages = pgTable(
@@ -112,6 +121,14 @@ export const chatMessages = pgTable(
     created_at: timestamp("created_at").defaultNow(),
     updated_at: timestamp("updated_at").$onUpdateFn(() => new Date()),
     parent_message_id: integer("parent_message_id"),
+    search_vector: tsvector("search_vector")
+      .notNull()
+      .generatedAlwaysAs(
+        (): SQL =>
+          sql`
+            setweight(to_tsvector('english', COALESCE(${chatMessages.message}, '')), 'A')
+          `
+      ),
   },
   (table) => [
     foreignKey({
@@ -121,6 +138,7 @@ export const chatMessages = pgTable(
     index("idx_messages_chat_created").on(table.chat_id, table.created_at),
     index("idx_messages_sender").on(table.sender_id),
     index("idx_messages_parent").on(table.parent_message_id),
+    index("idx_messages_search_vector").using("gin", table.search_vector),
   ]
 );
 

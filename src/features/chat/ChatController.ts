@@ -428,4 +428,44 @@ export class ChatController extends BaseController {
       });
     },
   });
+
+  messagesSearch = responseWrapper({
+    action: "search_messages",
+    builder: this.builder,
+    errorMsg: "Something went wrong while searching messages",
+    successMsg: "Successfully found messages",
+    handler: async (ctx) => {
+      const user = ctx.get("user");
+      if (!user) {
+        throw new Error("User Not found");
+      }
+      const { chat_id } = ctx.req.param();
+      const query = ctx.req.query();
+      const schema = z
+        .object({
+          user_id: z.number().positive(),
+          chat_id: z.coerce.number().positive(),
+          search_text: z.string().min(2),
+          limit: z.coerce
+            .number()
+            .min(1, {
+              message: "Limit should be greater then zero",
+            })
+            .max(20)
+            .optional(),
+          cursor: z.string().optional(),
+        })
+        .safeParse({
+          user_id: user.id,
+          chat_id,
+          ...query,
+        });
+
+      if (!schema.success) {
+        throw schema.error;
+      }
+
+      return this.deps.chatServices.searchMessages({ ...schema.data });
+    },
+  });
 }

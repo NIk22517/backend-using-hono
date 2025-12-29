@@ -76,4 +76,9 @@ chatRouter.get("/read-status/:chat_id/:message_id", async (c) => {
   return c.json(data);
 });
 
+chatRouter.get("/messages-search/:chat_id", async (c) => {
+  const data = await controller.messagesSearch(c);
+  return c.json(data);
+});
+
 export default chatRouter;

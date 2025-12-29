@@ -47,6 +47,7 @@ import {
   ChatMessagesResponse,
   PagingInfo,
 } from "@/types/chatTypes";
+import { z } from "zod";
 
 export type SendMessagePayload = {
   chat_id: string;
@@ -61,6 +62,16 @@ export type SendMessagePayload = {
   };
   reuseAttachments?: UploadApiResponse[] | null;
 };
+
+const searchCursorSchema = z.object({
+  created_at: z.string().refine((v) => !Number.isNaN(Date.parse(v)), {
+    message: "Invalid created_at",
+  }),
+  rank: z.number().finite(),
+  id: z.number().int().positive(),
+});
+
+type SearchCursor = z.infer<typeof searchCursorSchema>;
 
 export class ChatServices {
   async generateGroupName(
@@ -1488,5 +1499,144 @@ export class ChatServices {
       });
       return statuses;
     }
+  }
+
+  encodeCursor(cursor: SearchCursor) {
+    return Buffer.from(JSON.stringify(cursor)).toString("base64");
+  }
+
+  decodeCursor(cursor: string): SearchCursor {
+    let parsed: unknown;
+
+    try {
+      parsed = JSON.parse(Buffer.from(cursor, "base64").toString("utf8"));
+    } catch {
+      throw new Error("Invalid cursor encoding");
+    }
+
+    const result = searchCursorSchema.safeParse(parsed);
+
+    if (!result.success) {
+      throw new Error("Invalid cursor format");
+    }
+
+    return result.data;
+  }
+
+  async searchMessages({
+    user_id,
+    chat_id,
+    search_text,
+    limit = 10,
+    cursor,
+  }: {
+    user_id: number;
+    chat_id: number;
+    search_text: string;
+    limit?: number;
+    cursor?: string;
+  }) {
+    const [chat] = await db
+      .select({ chat_type: chats.chat_type })
+      .from(chats)
+      .where(eq(chats.id, chat_id));
+    if (!chat) {
+      throw new Error("Chat not found");
+    }
+    const tsQuery = sql`
+        websearch_to_tsquery('english', ${search_text})
+    `;
+
+    let cursorCondition = undefined;
+
+    if (cursor) {
+      const { created_at, rank, id } = this.decodeCursor(cursor);
+
+      cursorCondition = sql`
+    (
+      ${chatMessages.created_at} < ${created_at}
+      OR (
+        ${chatMessages.created_at} = ${created_at}
+        AND ts_rank_cd(${chatMessages.search_vector}, ${tsQuery}, 32) < ${rank}
+      )
+      OR (
+        ${chatMessages.created_at} = ${created_at}
+        AND ts_rank_cd(${chatMessages.search_vector}, ${tsQuery}, 32) = ${rank}
+        AND ${chatMessages.id} < ${id}
+      )
+    )
+  `;
+    }
+
+    const results = await db
+      .select({
+        id: chatMessages.id,
+        message: chatMessages.message,
+        created_at: chatMessages.created_at,
+        highlighted_message: sql<string>`
+        ts_headline(
+          'english',
+          ${chatMessages.message},
+         ${tsQuery},
+          'StartSel=<mark>, StopSel=</mark>, MaxWords=50, MinWords=25, ShortWord=3, HighlightAll=FALSE'
+        )
+      `.as("highlighted_message"),
+        rank: sql<number>`
+        ts_rank_cd(
+          ${chatMessages.search_vector},
+          ${tsQuery},
+          32 
+        )
+      `.as("rank"),
+      })
+      .from(chatMessages)
+      .leftJoin(
+        chatMessageDeletes,
+        and(
+          eq(chatMessageDeletes.message_id, chatMessages.id),
+          eq(chatMessageDeletes.user_id, user_id)
+        )
+      )
+      .leftJoin(
+        chatClearStates,
+        and(
+          eq(chatClearStates.chat_id, chatMessages.chat_id),
+          eq(chatClearStates.user_id, user_id)
+        )
+      )
+      .where(
+        and(
+          eq(chatMessages.chat_id, chat_id),
+          eq(chatMessages.message_type, "user"),
+          isNull(chatMessageDeletes.message_id),
+          or(
+            isNull(chatClearStates.cleared_at),
+            gt(chatMessages.created_at, chatClearStates.cleared_at)
+          ),
+          sql`${chatMessages.search_vector} @@ ${tsQuery}`,
+          cursorCondition
+        )
+      )
+      .orderBy(
+        desc(chatMessages.created_at),
+        desc(sql`rank`),
+        desc(chatMessages.id)
+      )
+      .limit(limit + 1);
+    let nextCursor: string | null = null;
+    if (results.length > limit) {
+      const last = results[limit - 1];
+
+      nextCursor = this.encodeCursor({
+        created_at: last.created_at?.toISOString() as string,
+        rank: last.rank,
+        id: last.id,
+      });
+      results.pop();
+    }
+    return {
+      data: results,
+      nextCursor,
+    };
   }
 }

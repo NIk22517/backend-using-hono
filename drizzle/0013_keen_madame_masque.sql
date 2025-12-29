@@ -1,0 +1,1 @@
+CREATE INDEX "idx_messages_search_vector" ON "chat_messages" USING gin ("search_vector");

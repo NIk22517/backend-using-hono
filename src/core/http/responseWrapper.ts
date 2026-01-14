@@ -6,24 +6,26 @@ import type {
   ResponseType,
 } from "@/core/utils/ResponseBuilder";
 
-type Handler<T> = (ctx: Context) => Promise<T>;
+type AnyContext = Context<any, any, any>;
 
-interface WrapperProps<T> {
+type Handler<T, C extends AnyContext> = (ctx: C) => Promise<T>;
+
+interface WrapperProps<T, C extends AnyContext> {
   builder: ResponseBuilder;
   action: string;
   successMsg: string;
   errorMsg: string;
-  handler: Handler<T>;
+  handler: Handler<T, C>;
 }
 
-export const responseWrapper = <T>({
+export const responseWrapper = <T, C extends AnyContext>({
   builder,
   action,
   successMsg,
   errorMsg,
   handler,
-}: WrapperProps<T>) => {
-  return async (ctx: Context): Promise<ResponseType<T>> => {
+}: WrapperProps<T, C>) => {
+  return async (ctx: C): Promise<ResponseType<T>> => {
     try {
       const data = await handler(ctx);
       const response = builder.success({ action, data, message: successMsg });

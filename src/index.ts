@@ -18,7 +18,7 @@ const app = new OpenAPIHono();
 app.use(
   cors({
     origin: ["http://localhost:3001"],
-  })
+  }),
 );
 
 app.route("/", authRoutes);
@@ -61,7 +61,7 @@ app.get(
     spec: {
       url: "/doc",
     },
-  })
+  }),
 );
 
 const server = serve(
@@ -73,7 +73,7 @@ const server = serve(
     console.log(`Server listening on http://localhost:${info.port}`);
     console.log(`API Documentation: http://localhost:${info.port}/ui`);
     console.log(`API Reference: http://localhost:${info.port}/reference`);
-  }
+  },
 );
 
 startMessageScheduler();

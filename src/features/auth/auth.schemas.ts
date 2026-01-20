@@ -1,7 +1,7 @@
 import {
   createErrorResponseSchema,
   createSuccessResponseSchema,
-} from "@/core/utils/responseSchemas";
+} from "@/core/http/responseSchemas";
 import { z } from "@hono/zod-openapi";
 
 export const signInSchema = z.object({
@@ -56,15 +56,14 @@ export const UserDataSchema = z.object({
     example: "https://example.com/avatar.jpg",
     description: "URL to user's avatar image",
   }),
-  created_at: z.union([z.date(), z.string(), z.null()]).openapi({
-    type: "string",
+  // Change this - only accept string, not Date
+  created_at: z.string().nullable().openapi({
     format: "date-time",
     example: "2024-01-07T10:30:00.000Z",
     description: "Account creation timestamp",
   }),
   token: z.string().openapi({
-    example:
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIn0.xxx",
+    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     description: "JWT authentication token (expires in 7 days)",
   }),
 });
@@ -75,5 +74,5 @@ export const AuthSuccessResponseSchema =
 export const AuthErrorResponseSchema = createErrorResponseSchema(
   z.object({
     reason: z.string(),
-  })
+  }),
 );

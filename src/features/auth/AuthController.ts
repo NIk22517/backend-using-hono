@@ -5,6 +5,8 @@ import { BaseController } from "@/core/http/BaseController";
 import type { Services } from "@/core/di/types";
 import { responseWrapper } from "@/core/http/responseWrapper";
 import { SignInRequestSchema } from "./auth.schemas";
+import { openApiResponseWrapper } from "@/core/http/openApiResponseWrapper";
+import { AppError } from "@/core/errors";
 
 const logInSchema = z.object({
   email: z.string().email({ message: "Provide a valid email" }),
@@ -16,25 +18,23 @@ export class AuthController extends BaseController {
     super("AuthService");
   }
 
-  signIn = responseWrapper({
+  signIn = openApiResponseWrapper({
     action: "auth_sign_in",
     builder: this.builder,
     successMsg: "User Created Successfully",
-    errorMsg: "Not able to create new user",
     handler: async (ctx: Context) => {
-      const { data } = await ctx.req.json();
-
-      if (!data) {
-        ctx.status(400);
-        throw new Error("Please provide the data");
+      const body = await ctx.req.json();
+      console.log(body, "body");
+      if (!body?.data) {
+        throw AppError.badRequest("Missing request body");
       }
-      console.log(data, "data");
 
-      const parsed = SignInRequestSchema.safeParse(data);
+      const parsed = SignInRequestSchema.safeParse(body);
+
+      console.log(parsed, "parsed");
 
       if (!parsed.success) {
-        ctx.status(400);
-        throw parsed.error;
+        throw AppError.validation("Invalid input", parsed.error);
       }
 
       return this.deps.authService.signIn(parsed.data.data, this.deps);

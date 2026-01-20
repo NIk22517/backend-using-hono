@@ -2,11 +2,74 @@
 import { AuthController } from "./AuthController";
 import { services } from "@/core/di/container";
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
-import { AuthErrorResponseSchema, AuthSuccessResponseSchema, SignInRequestSchema } from "./auth.schemas";
+import {
+  AuthErrorResponseSchema,
+  AuthSuccessResponseSchema,
+  SignInRequestSchema,
+} from "./auth.schemas";
 
 const controller = new AuthController(services);
 
 const authRoutes = new OpenAPIHono().basePath("/auth");
+
+const commonErrorResponses = {
+  400: {
+    description: "Bad Request",
+    content: {
+      "application/json": {
+        schema: AuthErrorResponseSchema,
+      },
+    },
+  },
+  401: {
+    description: "Unauthorized",
+    content: {
+      "application/json": {
+        schema: AuthErrorResponseSchema,
+      },
+    },
+  },
+  403: {
+    description: "Forbidden",
+    content: {
+      "application/json": {
+        schema: AuthErrorResponseSchema,
+      },
+    },
+  },
+  404: {
+    description: "Not Found",
+    content: {
+      "application/json": {
+        schema: AuthErrorResponseSchema,
+      },
+    },
+  },
+  409: {
+    description: "Conflict",
+    content: {
+      "application/json": {
+        schema: AuthErrorResponseSchema,
+      },
+    },
+  },
+  422: {
+    description: "Validation Error",
+    content: {
+      "application/json": {
+        schema: AuthErrorResponseSchema,
+      },
+    },
+  },
+  500: {
+    description: "Internal Server Error",
+    content: {
+      "application/json": {
+        schema: AuthErrorResponseSchema,
+      },
+    },
+  },
+} as const;
 
 const signInRoute = createRoute({
   method: "post",
@@ -31,8 +94,9 @@ const signInRoute = createRoute({
         "application/json": {
           schema: AuthSuccessResponseSchema,
           example: {
-            success: true,
+            service: "auth",
             action: "auth_sign_in",
+            status: "success",
             message: "User Created Successfully",
             data: {
               id: 1,
@@ -48,45 +112,11 @@ const signInRoute = createRoute({
       },
       description: "User created successfully",
     },
-    204: {
-      description: "No content - operation successful but no data returned",
-    },
-    400: {
-      content: {
-        "application/json": {
-          schema: AuthErrorResponseSchema,
-          example: {
-            success: false,
-            action: "auth_sign_in",
-            message: "Not able to create new user",
-            error: {
-              issues: [
-                {
-                  path: ["email"],
-                  message: "Provide a valid email",
-                },
-              ],
-            },
-          },
-        },
-      },
-      description: "Bad request - validation error or duplicate user",
-    },
-    500: {
-      content: {
-        "application/json": {
-          schema: AuthErrorResponseSchema,
-        },
-      },
-      description: "Internal server error",
-    },
+    ...commonErrorResponses,
   },
 });
 
-authRoutes.openapi(signInRoute, async (c) => {
-  const data = await controller.signIn(c);
-  return c.json(data);
-});
+authRoutes.openapi(signInRoute, controller.signIn);
 
 authRoutes.post("/log-in", async (c) => {
   const data = await controller.logIn(c);

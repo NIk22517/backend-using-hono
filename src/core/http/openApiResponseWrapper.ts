@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { AppError, toAppError } from "../errors";
+import { toAppError } from "../errors";
 import type { ResponseBuilder } from "@/core/utils/ResponseBuilder";
 
 type AnyContext = Context<any, any, any>;
@@ -39,7 +39,7 @@ export const openApiResponseWrapper = <R, C extends AnyContext>({
         errorCode: appError.code,
       };
 
-      console.log(response, "error log");
+      console.log(response, "error log", err);
 
       return ctx.json(response, appError.status) as any;
     }

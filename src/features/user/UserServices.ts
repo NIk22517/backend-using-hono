@@ -4,6 +4,7 @@ import { usersTable } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export class UserServices {
+  
   async checkUserExist({
     key,
     value,

@@ -41,10 +41,9 @@ export class AuthController extends BaseController {
     },
   });
 
-  logIn = responseWrapper({
+  logIn = openApiResponseWrapper({
     action: "auth_log_in",
     builder: this.builder,
-    errorMsg: "Can not find user with this email",
     successMsg: "Log in Successfully",
     handler: async (ctx) => {
       const { data } = await ctx.req.json();

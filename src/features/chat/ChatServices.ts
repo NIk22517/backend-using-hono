@@ -40,14 +40,17 @@ import {
   asc,
 } from "drizzle-orm";
 import { encodeBase64 } from "hono/utils/encode";
-import { ChatMessagesParam, PinType } from "./ChatController";
+import { PinType } from "./ChatController";
 import { alias } from "drizzle-orm/pg-core";
-import {
-  ChatMessage,
-  ChatMessagesResponse,
-  PagingInfo,
-} from "@/types/chatTypes";
 import { z } from "zod";
+import { AppError } from "@/core/errors";
+import { DbExecutor } from "@/types/db";
+import {
+  InternalChatMessageRequest,
+  ChatMessagesResponse,
+  ChatMessage,
+  PagingInfo,
+} from "./chat.schemas";
 
 export type SendMessagePayload = {
   chat_id: string;
@@ -76,7 +79,7 @@ type SearchCursor = z.infer<typeof searchCursorSchema>;
 export class ChatServices {
   async generateGroupName(
     memberIds: number[],
-    previewCount = 3
+    previewCount = 3,
   ): Promise<string> {
     const users = await db
       .select({ name: usersTable.name })
@@ -157,19 +160,25 @@ export class ChatServices {
           [creator_id, ...member_ids].map((id) => ({
             chat_id: newChat.id,
             user_id: id,
-          }))
+          })),
         );
-        await this.sendMessage({
-          chat_id: newChat.id.toString(),
-          sender_id: creator_id,
-          message_type: "system",
-          event: "group_created",
-          message: "",
-          files: [],
-          metadata: {
-            target_user_ids: member_ids,
+
+        await this.insertSingleMessage(
+          {
+            chat_id: newChat.id.toString(),
+            sender_id: creator_id,
+            message_type: "system",
+            event: "group_created",
+            message: "",
+            files: [],
+            metadata: {
+              target_user_ids: member_ids,
+            },
           },
-        });
+          {
+            tx,
+          },
+        );
         return { newChat };
       }
       if (type === "broadcast") {
@@ -194,7 +203,7 @@ export class ChatServices {
           member_ids.map((id) => ({
             chat_id: newChat.id,
             recipient_id: id,
-          }))
+          })),
         );
         return { newChat };
       }
@@ -226,7 +235,7 @@ export class ChatServices {
         chat_name: chats.name,
         chat_type: chats.chat_type,
         created_at: chats.created_at,
-        members: sql`
+        members: sql<{ id: number; name: string; email: string }[]>`
           json_agg(
             json_build_object(
               'id', users.id,
@@ -265,24 +274,26 @@ export class ChatServices {
     LIMIT 1
   )
 `.as("last_message"),
-        unread_count: sql`
+        unread_count: sql<number>`
             COALESCE(${chatReadSummary.unread_count}, 0)
         `.as("unread_count"),
-        is_pinned: sql`bool_or(chat_pins.id IS NOT NULL)`.as("is_pinned"),
+        is_pinned: sql<boolean>`bool_or(chat_pins.id IS NOT NULL)`.as(
+          "is_pinned",
+        ),
       })
       .from(chats)
       .innerJoin(chatMembers, eq(chats.id, chatMembers.chat_id))
       .innerJoin(sql`users`, eq(chatMembers.user_id, sql`users.id`))
       .leftJoin(
         chatPins,
-        and(eq(chatPins.chat_id, chats.id), eq(chatPins.pinned_by, id))
+        and(eq(chatPins.chat_id, chats.id), eq(chatPins.pinned_by, id)),
       )
       .leftJoin(
         chatReadSummary,
         and(
           eq(chatReadSummary.chat_id, chats.id),
-          eq(chatReadSummary.user_id, id)
-        )
+          eq(chatReadSummary.user_id, id),
+        ),
       )
       .where(inArray(chats.id, chatIds))
       .groupBy(
@@ -291,11 +302,11 @@ export class ChatServices {
         chats.chat_type,
         chats.created_at,
         chatPins.pinned_at,
-        chatReadSummary.unread_count
+        chatReadSummary.unread_count,
       )
       .orderBy(
         sql`CASE WHEN ${chatPins.pinned_at} IS NOT NULL THEN 1 ELSE 0 END DESC`,
-        desc(chats.updated_at)
+        desc(chats.updated_at),
       )
       .limit(limit)
       .offset(offset);
@@ -338,7 +349,7 @@ export class ChatServices {
           access_mode: "authenticated",
           filename_override: file.name,
           resource_type: "auto",
-        }
+        },
       );
 
       const { folder, access_mode, api_key, ...rest } = uploadFile;
@@ -347,17 +358,20 @@ export class ChatServices {
     return results;
   }
 
-  async insertSingleMessage({
-    chat_id,
-    files,
-    message,
-    sender_id,
-    event,
-    message_type,
-    metadata,
-    reply_message_id,
-    reuseAttachments = null,
-  }: SendMessagePayload) {
+  async insertSingleMessage(
+    {
+      chat_id,
+      files,
+      message,
+      sender_id,
+      event,
+      message_type,
+      metadata,
+      reply_message_id,
+      reuseAttachments = null,
+    }: SendMessagePayload,
+    { tx = db }: { tx?: DbExecutor } = {},
+  ) {
     let uploadFiles: UploadApiResponse[] = [];
     if (files && files?.length > 0 && !reuseAttachments) {
       uploadFiles = await this.uploadFiles({
@@ -368,7 +382,7 @@ export class ChatServices {
       uploadFiles = reuseAttachments;
     }
 
-    const [newMessage] = await db
+    const [newMessage] = await tx
       .insert(chatMessages)
       .values({
         chat_id: Number(chat_id),
@@ -379,7 +393,7 @@ export class ChatServices {
       .returning();
 
     if (uploadFiles.length > 0) {
-      await db.insert(chatMessageAttachments).values({
+      await tx.insert(chatMessageAttachments).values({
         added_by: sender_id,
         chat_id: Number(chat_id),
         message_id: newMessage.id,
@@ -391,14 +405,14 @@ export class ChatServices {
 
     if (reply_message_id) {
       const reply_id = Number(reply_message_id);
-      const [reply] = await db
+      const [reply] = await tx
         .select()
         .from(chatMessages)
         .where(eq(chatMessages.id, reply_id));
 
       reply_data = reply;
 
-      await db.insert(chatMessagesReply).values({
+      await tx.insert(chatMessagesReply).values({
         chat_id: Number(chat_id),
         message_id: newMessage.id,
         reply_message_id: reply_id,
@@ -406,7 +420,7 @@ export class ChatServices {
     }
 
     if (message_type === "system" && event) {
-      await db.insert(chatMessageSystemEvents).values({
+      await tx.insert(chatMessageSystemEvents).values({
         chat_id: Number(chat_id),
         event,
         message_id: newMessage.id,
@@ -437,6 +451,15 @@ export class ChatServices {
       .from(chats)
       .where(eq(chats.id, Number(data.chat_id)));
     if (!checkType) throw new Error("Chat not found");
+    const memberValidate = await db.query.chatMembers.findFirst({
+      where: (cm, { and, eq }) =>
+        and(eq(cm.chat_id, checkType.id), eq(cm.user_id, data.sender_id)),
+    });
+
+    if (!memberValidate) {
+      throw AppError.badRequest("User is not a member of this chat");
+    }
+
     const message = await this.insertSingleMessage({ ...data });
     if (checkType.chat_type === "broadcast") {
       const broadcast_recipients = await db
@@ -476,7 +499,9 @@ export class ChatServices {
     before_id,
     around_id,
     equal_id,
-  }: ChatMessagesParam & { equal_id?: number }): Promise<ChatMessagesResponse> {
+  }: InternalChatMessageRequest & {
+    equal_id?: number;
+  }): Promise<ChatMessagesResponse> {
     const [chat] = await db
       .select({ chat_type: chats.chat_type, created_by: chats.created_by })
       .from(chats)
@@ -579,37 +604,37 @@ export class ChatServices {
         chatMessageDeletes,
         and(
           eq(chatMessageDeletes.message_id, chatMessages.id),
-          eq(chatMessageDeletes.user_id, user_id)
-        )
+          eq(chatMessageDeletes.user_id, user_id),
+        ),
       )
       .leftJoin(
         chatMessageAttachments,
-        eq(chatMessageAttachments.message_id, chatMessages.id)
+        eq(chatMessageAttachments.message_id, chatMessages.id),
       )
       .leftJoin(usersTable, eq(usersTable.id, chatMessages.sender_id))
       .leftJoin(
         chatMessagesReply,
         and(
           eq(chatMessagesReply.chat_id, chatMessages.chat_id),
-          eq(chatMessagesReply.message_id, chatMessages.id)
-        )
+          eq(chatMessagesReply.message_id, chatMessages.id),
+        ),
       )
       .leftJoin(
         chatClearStates,
         and(
           eq(chatClearStates.chat_id, chatMessages.chat_id),
-          eq(chatClearStates.user_id, user_id)
-        )
+          eq(chatClearStates.user_id, user_id),
+        ),
       )
       .where(
         and(
           eq(chatMessages.chat_id, chat_id),
           or(
             isNull(chatClearStates.cleared_at),
-            gt(chatMessages.created_at, chatClearStates.cleared_at)
+            gt(chatMessages.created_at, chatClearStates.cleared_at),
           ),
-          cursorCondition
-        )
+          cursorCondition,
+        ),
       )
       .orderBy(orderDirection)
       .limit(limit + 1);
@@ -636,7 +661,7 @@ export class ChatServices {
       ...new Set(
         normalizedMessages
           .map((m) => m.reply_message_id)
-          .filter((id): id is number => !!id)
+          .filter((id): id is number => !!id),
       ),
     ];
 
@@ -653,14 +678,14 @@ export class ChatServices {
           .from(chatMessages)
           .leftJoin(
             chatMessageAttachments,
-            eq(chatMessageAttachments.message_id, chatMessages.id)
+            eq(chatMessageAttachments.message_id, chatMessages.id),
           )
           .leftJoin(usersTable, eq(usersTable.id, chatMessages.sender_id))
           .where(
             and(
               inArray(chatMessages.id, replyIds),
-              eq(chatMessages.chat_id, chat_id)
-            )
+              eq(chatMessages.chat_id, chat_id),
+            ),
           )
       : [];
 
@@ -679,7 +704,7 @@ export class ChatServices {
             .from(broadcastRecipients)
             .leftJoin(
               usersTable,
-              eq(usersTable.id, broadcastRecipients.recipient_id)
+              eq(usersTable.id, broadcastRecipients.recipient_id),
             )
             .where(eq(broadcastRecipients.chat_id, chat_id))
         : await db
@@ -701,8 +726,8 @@ export class ChatServices {
           .where(
             and(
               inArray(chatMessageSystemEvents.message_id, systemMessageIds),
-              eq(chatMessageSystemEvents.chat_id, chat_id)
-            )
+              eq(chatMessageSystemEvents.chat_id, chat_id),
+            ),
           )
       : [];
 
@@ -745,8 +770,8 @@ export class ChatServices {
         .where(
           and(
             eq(chatMessageReadReceipts.chat_id, chat_id),
-            inArray(chatMessageReadReceipts.message_id, messageIds)
-          )
+            inArray(chatMessageReadReceipts.message_id, messageIds),
+          ),
         );
 
       for (const r of rows) {
@@ -765,13 +790,13 @@ export class ChatServices {
         .from(chatMessages)
         .leftJoin(
           chatMessageReadReceipts,
-          eq(chatMessageReadReceipts.message_id, chatMessages.id)
+          eq(chatMessageReadReceipts.message_id, chatMessages.id),
         )
         .where(
           and(
             isNotNull(chatMessages.parent_message_id),
-            inArray(chatMessages.parent_message_id, messageIds)
-          )
+            inArray(chatMessages.parent_message_id, messageIds),
+          ),
         );
 
       for (const r of rows) {
@@ -791,7 +816,7 @@ export class ChatServices {
       const readers = readMap.get(msg.id) ?? new Set<number>();
 
       const eligibleRecipients = [...memberMap.keys()].filter(
-        (uid) => uid !== msg.sender_id
+        (uid) => uid !== msg.sender_id,
       );
 
       const read_by = eligibleRecipients.filter((uid) => readers.has(uid));
@@ -800,12 +825,13 @@ export class ChatServices {
       return {
         ...msg,
         reply_data: msg.reply_message_id
-          ? (replyMap.get(msg.reply_message_id) as ChatMessage["reply_data"]) ??
-            null
+          ? ((replyMap.get(
+              msg.reply_message_id,
+            ) as ChatMessage["reply_data"]) ?? null)
           : null,
         system_data:
           msg.message_type === "system"
-            ? (systemMap.get(msg.id) as ChatMessage["system_data"]) ?? null
+            ? ((systemMap.get(msg.id) as ChatMessage["system_data"]) ?? null)
             : null,
         read_by: read_by.map((id) => memberMap.get(id)!),
         unread_by: unread_by.map((id) => memberMap.get(id)!),
@@ -844,8 +870,8 @@ export class ChatServices {
       .where(
         and(
           eq(chatMessages.chat_id, chat_id),
-          ne(chatMessages.message_type, "system")
-        )
+          ne(chatMessages.message_type, "system"),
+        ),
       )
       .orderBy(desc(chatMessages.created_at))
       .limit(1);
@@ -864,8 +890,8 @@ export class ChatServices {
         and(
           eq(chatMessageReadReceipts.chat_id, chatMessages.chat_id),
           eq(chatMessageReadReceipts.message_id, chatMessages.id),
-          eq(chatMessageReadReceipts.user_id, user_id)
-        )
+          eq(chatMessageReadReceipts.user_id, user_id),
+        ),
       )
       .where(
         and(
@@ -873,8 +899,8 @@ export class ChatServices {
           ne(chatMessages.message_type, "system"),
           ne(chatMessages.sender_id, user_id),
           isNull(chatMessageReadReceipts.id),
-          lte(chatMessages.id, last_read_message_id)
-        )
+          lte(chatMessages.id, last_read_message_id),
+        ),
       );
 
     if (unreadMessages.length > 0) {
@@ -885,7 +911,7 @@ export class ChatServices {
             chat_id: el.chat_id,
             message_id: el.message_id,
             user_id,
-          }))
+          })),
         )
         .onConflictDoNothing();
     }
@@ -963,8 +989,8 @@ export class ChatServices {
             .where(
               and(
                 inArray(chatMessages.parent_message_id, message_ids),
-                eq(chatMessages.sender_id, user_id)
-              )
+                eq(chatMessages.sender_id, user_id),
+              ),
             );
 
           const deleteValues = allChildMessages.map((el) => {
@@ -1069,10 +1095,10 @@ export class ChatServices {
               and(
                 inArray(
                   chatMembers.chat_id,
-                  childMessages.map((m) => m.chat_id)
+                  childMessages.map((m) => m.chat_id),
                 ),
-                ne(chatMembers.user_id, user_id)
-              )
+                ne(chatMembers.user_id, user_id),
+              ),
             );
 
           const recipientByChat = new Map<number, number>();
@@ -1155,7 +1181,7 @@ export class ChatServices {
             chat_id,
             delete_action: action,
             deleted_by: user_id,
-          }))
+          })),
         );
 
         const data = await db
@@ -1230,7 +1256,7 @@ export class ChatServices {
         chat_name: chats.name,
         chat_type: chats.chat_type,
         created_at: chats.created_at,
-        members: sql<{ id: number; name: string; email: string }>`
+        members: sql<{ id: number; name: string; email: string }[]>`
             CASE
               WHEN ${chats.chat_type} = 'broadcast' THEN (
                 SELECT json_agg(
@@ -1262,6 +1288,10 @@ export class ChatServices {
       .from(chats)
       .where(eq(chats.id, chat_id));
 
+    if (!result) {
+      throw AppError.notFound("No Chat Room Found");
+    }
+
     return result;
   }
 
@@ -1280,7 +1310,7 @@ export class ChatServices {
     const [result] = await db
       .delete(chatPins)
       .where(
-        and(eq(chatPins.chat_id, chat_id), eq(chatPins.pinned_by, pinned_by))
+        and(eq(chatPins.chat_id, chat_id), eq(chatPins.pinned_by, pinned_by)),
       )
       .returning();
 
@@ -1338,8 +1368,8 @@ export class ChatServices {
       .where(
         and(
           eq(chatScheduleMessages.sender_id, user_id),
-          eq(chatScheduleMessages.chat_id, chat_id)
-        )
+          eq(chatScheduleMessages.chat_id, chat_id),
+        ),
       )
       .orderBy(desc(chatScheduleMessages.scheduled_at));
 
@@ -1358,8 +1388,8 @@ export class ChatServices {
       .where(
         and(
           eq(chatScheduleMessages.sender_id, user_id),
-          eq(chatScheduleMessages.id, schedule_id)
-        )
+          eq(chatScheduleMessages.id, schedule_id),
+        ),
       )
       .returning();
     return result;
@@ -1396,8 +1426,8 @@ export class ChatServices {
       .where(
         and(
           eq(chatScheduleMessages.sender_id, user_id),
-          eq(chatScheduleMessages.id, schedule_id)
-        )
+          eq(chatScheduleMessages.id, schedule_id),
+        ),
       )
       .returning();
 
@@ -1470,8 +1500,8 @@ export class ChatServices {
         .where(
           and(
             eq(chatMessageReadReceipts.message_id, message_id),
-            eq(chatMessageReadReceipts.chat_id, chat_id)
-          )
+            eq(chatMessageReadReceipts.chat_id, chat_id),
+          ),
         );
 
       const receiptMap = new Set<number>();
@@ -1489,8 +1519,8 @@ export class ChatServices {
         .where(
           and(
             eq(chatMembers.chat_id, chat_id),
-            ne(chatMembers.user_id, user_id)
-          )
+            ne(chatMembers.user_id, user_id),
+          ),
         );
 
       const statuses = recipients.map((el) => {
@@ -1594,15 +1624,15 @@ export class ChatServices {
         chatMessageDeletes,
         and(
           eq(chatMessageDeletes.message_id, chatMessages.id),
-          eq(chatMessageDeletes.user_id, user_id)
-        )
+          eq(chatMessageDeletes.user_id, user_id),
+        ),
       )
       .leftJoin(
         chatClearStates,
         and(
           eq(chatClearStates.chat_id, chatMessages.chat_id),
-          eq(chatClearStates.user_id, user_id)
-        )
+          eq(chatClearStates.user_id, user_id),
+        ),
       )
       .where(
         and(
@@ -1611,16 +1641,16 @@ export class ChatServices {
           isNull(chatMessageDeletes.message_id),
           or(
             isNull(chatClearStates.cleared_at),
-            gt(chatMessages.created_at, chatClearStates.cleared_at)
+            gt(chatMessages.created_at, chatClearStates.cleared_at),
           ),
           sql`${chatMessages.search_vector} @@ ${tsQuery}`,
-          cursorCondition
-        )
+          cursorCondition,
+        ),
       )
       .orderBy(
         desc(chatMessages.created_at),
         desc(sql`rank`),
-        desc(chatMessages.id)
+        desc(chatMessages.id),
       )
       .limit(limit + 1);
     let nextCursor: string | null = null;

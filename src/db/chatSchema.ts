@@ -15,7 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { usersTable } from "./userSchema";
 import type { UploadApiResponse } from "cloudinary";
-import { InferInsertModel, InferSelectModel, SQL, sql } from "drizzle-orm";
+import { InferSelectModel, SQL, sql } from "drizzle-orm";
 
 export const chatTypeEnum = pgEnum("chat_type", [
   "single",
@@ -37,7 +37,7 @@ export const chats = pgTable(
       .defaultNow()
       .$onUpdateFn(() => new Date()),
   },
-  (table) => [index("idx_chats_created_by").on(table.created_by)]
+  (table) => [index("idx_chats_created_by").on(table.created_by)],
 );
 
 export const chatPins = pgTable(
@@ -52,7 +52,7 @@ export const chatPins = pgTable(
       .notNull(),
     pinned_at: timestamp("pinned_at").defaultNow(),
   },
-  (table) => [unique().on(table.chat_id, table.pinned_by)]
+  (table) => [unique().on(table.chat_id, table.pinned_by)],
 );
 
 export const chatMembers = pgTable(
@@ -71,7 +71,7 @@ export const chatMembers = pgTable(
     unique().on(table.chat_id, table.user_id),
     index("idx_chat_members_user").on(table.user_id),
     index("idx_chat_members_user_chat_id").on(table.chat_id),
-  ]
+  ],
 );
 
 export const broadcastRecipients = pgTable(
@@ -89,11 +89,11 @@ export const broadcastRecipients = pgTable(
   (table) => [
     unique("broadcast_recipients_chat_recipient").on(
       table.chat_id,
-      table.recipient_id
+      table.recipient_id,
     ),
     index("idx_broadcast_recipients_user").on(table.recipient_id),
     index("idx_broadcast_recipients_chat_id").on(table.chat_id),
-  ]
+  ],
 );
 
 export const tsvector = customType<{
@@ -127,7 +127,7 @@ export const chatMessages = pgTable(
         (): SQL =>
           sql`
             setweight(to_tsvector('english', COALESCE(${chatMessages.message}, '')), 'A')
-          `
+          `,
       ),
   },
   (table) => [
@@ -139,7 +139,7 @@ export const chatMessages = pgTable(
     index("idx_messages_sender").on(table.sender_id),
     index("idx_messages_parent").on(table.parent_message_id),
     index("idx_messages_search_vector").using("gin", table.search_vector),
-  ]
+  ],
 );
 
 export const chatMessageAttachments = pgTable(
@@ -161,7 +161,7 @@ export const chatMessageAttachments = pgTable(
   (table) => [
     index("idx_attachments_message").on(table.message_id),
     index("idx_attachments_chat").on(table.chat_id),
-  ]
+  ],
 );
 
 export const systemEventEnum = pgEnum("system_event", [
@@ -198,7 +198,7 @@ export const chatMessageSystemEvents = pgTable(
     index("idx_sys_event_event").on(table.event),
     index("idx_sys_event_message_id").on(table.message_id),
     index("idx_sys_event_chat_id").on(table.chat_id),
-  ]
+  ],
 );
 
 export const chatMessageReadReceipts = pgTable(
@@ -222,7 +222,7 @@ export const chatMessageReadReceipts = pgTable(
     index("idx_msg_read_user_id").on(table.user_id),
     index("idx_msg_read_chat_user").on(table.chat_id, table.user_id),
     index("idx_msg_read_read_at").on(table.read_at),
-  ]
+  ],
 );
 
 export const chatReadSummary = pgTable(
@@ -237,7 +237,7 @@ export const chatReadSummary = pgTable(
       .notNull(),
     last_read_message_id: integer("last_read_message_id").references(
       () => chatMessages.id,
-      { onDelete: "set null" }
+      { onDelete: "set null" },
     ),
     last_read_at: timestamp("last_read_at").defaultNow(),
     unread_count: integer("unread_count").default(0),
@@ -250,7 +250,7 @@ export const chatReadSummary = pgTable(
     index("idx_read_summary_chat").on(table.chat_id),
     index("idx_read_summary_user").on(table.user_id),
     index("idx_read_summary_unread").on(table.unread_count),
-  ]
+  ],
 );
 
 export const messageDeleteActionEnum = pgEnum("message_delete_action", [
@@ -287,7 +287,7 @@ export const chatMessageDeletes = pgTable(
     unique().on(table.message_id, table.user_id),
     index("idx_msg_delete_chat_user").on(table.chat_id, table.user_id),
     index("idx_msg_delete_message").on(table.message_id),
-  ]
+  ],
 );
 
 export const chatClearStates = pgTable(
@@ -305,7 +305,7 @@ export const chatClearStates = pgTable(
   (table) => [
     unique().on(table.chat_id, table.user_id),
     index("idx_clear_chat_user").on(table.chat_id, table.user_id),
-  ]
+  ],
 );
 
 export const chatMessagesReply = pgTable(
@@ -327,7 +327,7 @@ export const chatMessagesReply = pgTable(
   (table) => [
     index("idx_reply_message").on(table.reply_message_id),
     index("idx_reply_message_chat").on(table.chat_id),
-  ]
+  ],
 );
 
 export const chatScheduleMessages = pgTable("chat_message_schedules", {

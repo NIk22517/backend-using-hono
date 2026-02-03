@@ -559,3 +559,31 @@ const ChatClearMessageSchema = createSelectSchema(chatClearStates, {
 export const ChatDeleteMessageSuccessSchema = createSuccessResponseSchema(
   z.array(z.union([ChatDeleteMessageSchema, ChatClearMessageSchema])),
 );
+
+export const ChatMessageStatusSuccessSchema = createSuccessResponseSchema(
+  z.object({
+    statuses: z.array(
+      z.object({
+        user_id: z.number(),
+        status: z.enum(["read", "delivered"]),
+      }),
+    ),
+  }),
+);
+
+const ChatSearchMessageSchema = z.object({
+  id: z.number(),
+  message: z.string().nullable(),
+  highlighted_message: z.string().nullable(),
+  created_at: z.date().transform((d) => d.toISOString()),
+  rank: z.number(),
+});
+
+const ChatSearchMessagesResponseSchema = z.object({
+  data: z.array(ChatSearchMessageSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const ChatSearchMessageSuccessSchema = createSuccessResponseSchema(
+  ChatSearchMessagesResponseSchema,
+);

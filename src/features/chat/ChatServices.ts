@@ -1528,7 +1528,7 @@ export class ChatServices {
         const hasRead = receiptMap.has(el.user_id);
         return { user_id: el.user_id, status: hasRead ? "read" : "delivered" };
       });
-      return statuses;
+      return { statuses };
     }
   }
 

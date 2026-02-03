@@ -23,6 +23,8 @@ import {
   ChatMarkAsReadSuccessSchema,
   DeleteMessageSchema,
   ChatDeleteMessageSuccessSchema,
+  ChatMessageStatusSuccessSchema,
+  ChatSearchMessageSuccessSchema,
 } from "./chat.schemas";
 import { toAppError } from "@/core/errors";
 import { ResponseBuilder } from "@/core/utils/ResponseBuilder";
@@ -1223,14 +1225,186 @@ const chatDeleteMessageRoute = createRoute({
 
 chatRouter.openapi(chatDeleteMessageRoute, controller.deleteMessages);
 
-chatRouter.get("/read-status/:chat_id/:message_id", async (c) => {
-  const data = await controller.checkMessageStatus(c);
-  return c.json(data);
+const chatMessageStatusRoute = createRoute({
+  method: "get",
+  path: "/read-status/{chat_id}/{message_id}",
+  tags: ["Chat"],
+  description: "Get Message Status who have read it or who have received it",
+  request: {
+    headers: z.object({
+      authorization: z.string().openapi({
+        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+      }),
+    }),
+    params: z.object({
+      chat_id: z.string().transform(Number),
+      message_id: z.string().transform(Number),
+    }),
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: ChatMessageStatusSuccessSchema,
+        },
+      },
+      description: "Successfully ",
+    },
+    400: {
+      description: "Bad Request",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+    401: {
+      description: "Unauthorized",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+    403: {
+      description: "Forbidden",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+    404: {
+      description: "Not Found",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+    409: {
+      description: "Conflict",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+    422: {
+      description: "Validation Error",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+    500: {
+      description: "Internal Server Error",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+  },
 });
 
-chatRouter.get("/messages-search/:chat_id", async (c) => {
-  const data = await controller.messagesSearch(c);
-  return c.json(data);
+chatRouter.openapi(chatMessageStatusRoute, controller.checkMessageStatus);
+
+const chatSearchMessageRoute = createRoute({
+  method: "get",
+  path: "/messages-search/{chat_id}",
+  tags: ["Chat"],
+  description: "Search Messages with keywords",
+  request: {
+    headers: z.object({
+      authorization: z.string().openapi({
+        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+      }),
+    }),
+    params: z.object({
+      chat_id: z.string().transform(Number),
+    }),
+    query: z.object({
+      search_text: z.string().min(2),
+      limit: z.coerce
+        .number()
+        .min(1, {
+          message: "Limit should be greater then zero",
+        })
+        .max(20)
+        .optional(),
+      cursor: z.string().optional(),
+    }),
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: ChatSearchMessageSuccessSchema,
+        },
+      },
+      description: "Messages Search Successfully",
+    },
+    400: {
+      description: "Bad Request",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+    401: {
+      description: "Unauthorized",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+    403: {
+      description: "Forbidden",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+    404: {
+      description: "Not Found",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+    409: {
+      description: "Conflict",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+    422: {
+      description: "Validation Error",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+    500: {
+      description: "Internal Server Error",
+      content: {
+        "application/json": {
+          schema: ChatErrorResponseSchema,
+        },
+      },
+    },
+  },
 });
+
+chatRouter.openapi(chatSearchMessageRoute, controller.messagesSearch);
 
 export default chatRouter;

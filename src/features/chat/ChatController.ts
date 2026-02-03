@@ -364,10 +364,9 @@ export class ChatController extends BaseController {
     },
   });
 
-  checkMessageStatus = responseWrapper({
+  checkMessageStatus = openApiResponseWrapper({
     action: "check_messages_status",
     builder: this.builder,
-    errorMsg: "Something went wrong while getting messages status",
     successMsg: "Successfully get messages status",
     handler: async (ctx) => {
       const user = ctx.get("user");
@@ -395,10 +394,9 @@ export class ChatController extends BaseController {
     },
   });
 
-  messagesSearch = responseWrapper({
+  messagesSearch = openApiResponseWrapper({
     action: "search_messages",
     builder: this.builder,
-    errorMsg: "Something went wrong while searching messages",
     successMsg: "Successfully found messages",
     handler: async (ctx) => {
       const user = ctx.get("user");

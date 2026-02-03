@@ -2,7 +2,11 @@ import {
   createErrorResponseSchema,
   createSuccessResponseSchema,
 } from "@/core/http/responseSchemas";
-import { chatTypeEnum, messageTypeEnum } from "@/db/chatSchema";
+import {
+  chatTypeEnum,
+  messageDeleteActionEnum,
+  messageTypeEnum,
+} from "@/db/chatSchema";
 import { z } from "@hono/zod-openapi";
 
 //create chat schema start
@@ -446,3 +450,112 @@ export type SystemData = z.infer<typeof SystemData>;
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type PagingInfo = z.infer<typeof PagingInfoSchema>;
 export type ChatMessagesResponse = z.infer<typeof ChatMessagesResponseSchema>;
+
+export const scheduleSchema = z.object({
+  chat_id: z.coerce.number(),
+  message: z.string().default(""),
+  scheduled_at: z.preprocess((arg) => {
+    if (typeof arg === "string" || arg instanceof Date) return new Date(arg);
+  }, z.date()),
+});
+
+import { createSelectSchema } from "drizzle-zod";
+import {
+  chatScheduleMessages,
+  chatReadSummary,
+  chatClearStates,
+  chatMessageDeletes,
+} from "../../db/chatSchema";
+
+export const ChatScheduleMessageSelectSchema = createSelectSchema(
+  chatScheduleMessages,
+  {
+    // Convert Date → ISO string for API response
+    scheduled_at: z.date().transform((d) => d.toISOString()),
+    last_attempt_at: z
+      .date()
+      .nullable()
+      .transform((d) => d?.toISOString()),
+    completed_at: z
+      .date()
+      .nullable()
+      .transform((d) => d?.toISOString()),
+    created_at: z.date().transform((d) => d.toISOString()),
+  },
+);
+
+export const ChatScheduleMessagesSuccessSchema = createSuccessResponseSchema(
+  ChatScheduleMessageSelectSchema,
+);
+
+export const ScheduleMessagesSuccessSchema = createSuccessResponseSchema(
+  z.array(ChatScheduleMessageSelectSchema),
+);
+
+const GetScheduleSchema = ChatScheduleMessageSelectSchema.pick({
+  id: true,
+  chat_id: true,
+  sender_id: true,
+  message: true,
+  scheduled_at: true,
+  status: true,
+  retry_count: true,
+  last_attempt_at: true,
+  completed_at: true,
+  created_at: true,
+}).transform(({ sender_id, ...rest }) => ({
+  ...rest,
+  user_id: sender_id,
+}));
+
+export const ChatGetScheduleSuccessSchema = createSuccessResponseSchema(
+  z.array(GetScheduleSchema),
+);
+
+export const updateScheduleSchema = z.object({
+  data: z.object({
+    schedule_id: z.string().transform((d) => Number(d)),
+    message: z.string().default(""),
+    scheduled_at: z
+      .preprocess((arg) => {
+        if (typeof arg === "string" || arg instanceof Date)
+          return new Date(arg);
+      }, z.date())
+      .optional(),
+  }),
+});
+
+export const ChatSReadMessageSchema = createSelectSchema(chatReadSummary, {
+  last_read_at: z.date().transform((d) => d.toISOString()),
+  updated_at: z.date().transform((d) => d.toISOString()),
+});
+
+export const ChatMarkAsReadSuccessSchema = createSuccessResponseSchema(
+  ChatSReadMessageSchema,
+);
+
+export const DeleteMessageSchema = z.object({
+  data: z.discriminatedUnion("action", [
+    z.object({
+      action: z.enum(messageDeleteActionEnum.enumValues),
+      chat_id: z.string().transform(Number),
+      message_ids: z.array(z.number()).min(1),
+    }),
+    z.object({
+      action: z.literal("clear_chat"),
+      chat_id: z.string().transform(Number),
+    }),
+  ]),
+});
+
+const ChatDeleteMessageSchema = createSelectSchema(chatMessageDeletes, {
+  deleted_at: z.date().transform((d) => d.toISOString()),
+});
+
+const ChatClearMessageSchema = createSelectSchema(chatClearStates, {
+  cleared_at: z.date().transform((d) => d.toISOString()),
+});
+
+export const ChatDeleteMessageSuccessSchema = createSuccessResponseSchema(
+  z.array(z.union([ChatDeleteMessageSchema, ChatClearMessageSchema])),
+);

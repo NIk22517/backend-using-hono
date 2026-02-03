@@ -150,10 +150,9 @@ export class ChatController extends BaseController {
     },
   });
 
-  markAsReadMsg = responseWrapper({
+  markAsReadMsg = openApiResponseWrapper({
     action: "mark_as_read_all_chat_messages",
     builder: this.builder,
-    errorMsg: "Not able to read the msg",
     successMsg: "Success change status to read",
     handler: async (ctx) => {
       const user = ctx.get("user");
@@ -175,11 +174,10 @@ export class ChatController extends BaseController {
     },
   });
 
-  deleteMessages = responseWrapper({
+  deleteMessages = openApiResponseWrapper({
     action: "delete_user_messages",
     builder: this.builder,
     successMsg: "Message Deleted Successfully",
-    errorMsg: "Error Deleting Messages",
     handler: async (ctx) => {
       const user = ctx.get("user");
       if (!user) {
@@ -238,9 +236,8 @@ export class ChatController extends BaseController {
     },
   });
 
-  scheduleMessages = responseWrapper({
+  scheduleMessages = openApiResponseWrapper({
     action: "schedule message",
-    errorMsg: "Something went wrong while schedule message",
     successMsg: "Successfully Schedule Message",
     builder: this.builder,
     handler: async (ctx) => {
@@ -279,9 +276,8 @@ export class ChatController extends BaseController {
     },
   });
 
-  getScheduleMessage = responseWrapper({
+  getScheduleMessage = openApiResponseWrapper({
     action: "get schedule messages",
-    errorMsg: "Something went wrong while getting schedule messages",
     successMsg: "Successfully get schedule messages",
     builder: this.builder,
     handler: async (ctx) => {
@@ -307,10 +303,9 @@ export class ChatController extends BaseController {
     },
   });
 
-  deleteScheduleMessage = responseWrapper({
+  deleteScheduleMessage = openApiResponseWrapper({
     action: "delete_schedule_message",
     successMsg: "Deleted Successfully",
-    errorMsg: "Something went wrong while deleting schedule message",
     builder: this.builder,
     handler: async (ctx) => {
       const user = ctx.get("user");
@@ -335,10 +330,9 @@ export class ChatController extends BaseController {
     },
   });
 
-  updateScheduleMessages = responseWrapper({
+  updateScheduleMessages = openApiResponseWrapper({
     action: "update_schedule_message",
     successMsg: "Updated Successfully",
-    errorMsg: "Something went wrong while updating schedule message",
     builder: this.builder,
     handler: async (ctx) => {
       const user = ctx.get("user");

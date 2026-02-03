@@ -1427,6 +1427,7 @@ export class ChatServices {
         and(
           eq(chatScheduleMessages.sender_id, user_id),
           eq(chatScheduleMessages.id, schedule_id),
+          eq(chatScheduleMessages.active, true),
         ),
       )
       .returning();

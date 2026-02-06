@@ -17,12 +17,7 @@ export class AiService {
       const results = await db
         .select()
         .from(chatMessages)
-        .where(
-          and(
-            eq(chatMessages.chat_id, chat_id),
-            gt(chatMessages.created_at, new Date("2025-05-13"))
-          )
-        );
+        .where(eq(chatMessages.chat_id, chat_id));
 
       if (results.length === 0) {
         c.status(200);
@@ -53,7 +48,7 @@ export class AiService {
         },
         {
           responseType: "stream",
-        }
+        },
       );
 
       c.header("Content-Type", "text/event-stream");
@@ -85,10 +80,10 @@ export class AiService {
                 "Error parsing Ollama stream chunk:",
                 error,
                 "Raw line:",
-                line
+                line,
               );
               await stream.write(
-                `[SERVER_ERROR: Malformed AI response part]\n`
+                `[SERVER_ERROR: Malformed AI response part]\n`,
               );
             }
           }
@@ -107,12 +102,7 @@ export class AiService {
       const results = await db
         .select()
         .from(chatMessages)
-        .where(
-          and(
-            eq(chatMessages.chat_id, chat_id),
-            gt(chatMessages.created_at, new Date("2024-01-01"))
-          )
-        )
+        .where(and(eq(chatMessages.chat_id, chat_id)))
         .orderBy(chatMessages.created_at);
       if (results.length === 0) {
         c.status(200);
@@ -134,7 +124,7 @@ export class AiService {
         },
         {
           responseType: "stream",
-        }
+        },
       );
 
       return stream(c, async (stream) => {
@@ -158,10 +148,10 @@ export class AiService {
                 "Error parsing Ollama stream chunk:",
                 error,
                 "Raw line:",
-                line
+                line,
               );
               await stream.write(
-                `[SERVER_ERROR: Malformed AI response part]\n`
+                `[SERVER_ERROR: Malformed AI response part]\n`,
               );
             }
           }
@@ -273,7 +263,7 @@ NOW OUTPUT ONLY THE ARRAY:
           "Failed to parse AI suggestions:",
           err,
           "Raw:",
-          ollamaRes.data.response
+          ollamaRes.data.response,
         );
         suggestions = [];
       }
@@ -305,9 +295,8 @@ NOW OUTPUT ONLY THE ARRAY:
         },
         {
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
-      console.log(data);
 
       return data;
     } catch (error) {

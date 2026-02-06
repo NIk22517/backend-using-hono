@@ -91,7 +91,6 @@ export class ChatController extends BaseController {
         throw new Error("User not found");
       }
       const data = await ctx.req.formData();
-      console.log(data, "data");
       const message = data.get("message");
       const chat_id = data.get("chat_id");
       const reply_message_id = data.get("reply_message_id") as string;
@@ -222,15 +221,12 @@ export class ChatController extends BaseController {
       }
 
       const { data } = await ctx.req.json();
-      console.log(data, "data");
 
       const parse = pinSchema.safeParse({ ...data, pinned_by: user.id });
 
       if (!parse.success) {
         throw parse.error;
       }
-
-      console.log(parse, "parse");
 
       return this.deps.chatServices.pinUnpinChat(parse.data);
     },

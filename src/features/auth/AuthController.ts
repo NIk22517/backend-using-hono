@@ -24,14 +24,11 @@ export class AuthController extends BaseController {
     successMsg: "User Created Successfully",
     handler: async (ctx: Context) => {
       const body = await ctx.req.json();
-      console.log(body, "body");
       if (!body?.data) {
         throw AppError.badRequest("Missing request body");
       }
 
       const parsed = SignInRequestSchema.safeParse(body);
-
-      console.log(parsed, "parsed");
 
       if (!parsed.success) {
         throw AppError.validation("Invalid input", parsed.error);

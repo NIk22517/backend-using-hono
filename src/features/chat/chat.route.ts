@@ -41,7 +41,6 @@ const chatRouter = new OpenAPIHono({
   defaultHook: (result, c) => {
     if (!result.success) {
       const error = toAppError(result.error);
-      console.log(error, "error");
       const errRes = {
         ...new ResponseBuilder("chat").failure({
           action: "chat_actions",

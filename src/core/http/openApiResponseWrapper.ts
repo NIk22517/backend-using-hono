@@ -39,8 +39,6 @@ export const openApiResponseWrapper = <R, C extends AnyContext>({
         errorCode: appError.code,
       };
 
-      console.log(response, "error log", err);
-
       return ctx.json(response, appError.status) as any;
     }
   };

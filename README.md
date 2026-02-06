@@ -116,3 +116,8 @@ Configuration file for [Drizzle ORM](https://orm.drizzle.team/), used to define 
 ---
 
 Let me know if you'd like this as a downloadable file or want it customized further (e.g., with badge icons, example routes, or setup steps for Docker/CI/CD). Would you like a README file created and shared here for download?
+
+
+## docker modal 
+
+docker compose exec ollama ollama pull llama3.2:1b

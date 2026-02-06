@@ -10,8 +10,10 @@ services:
       - /app/node_modules
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/chatdatabase
+      - OLLAMA_URL=http://ollama:11434
     depends_on:
       - db
+      - ollama
     command: sh -c "until nc -z db 5432; do sleep 1; done && pnpm run dev"
     develop:
       watch:
@@ -33,6 +35,14 @@ services:
       POSTGRES_PASSWORD: password
     volumes:
       - chat_db_data:/var/lib/postgresql/data
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
 
 volumes:
   chat_db_data:
+  ollama_data:

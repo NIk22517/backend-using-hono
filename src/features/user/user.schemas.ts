@@ -1,10 +1,17 @@
-import {
-  createErrorResponseSchema,
-  createSuccessResponseSchema,
-} from "@/core/http/responseSchemas";
+import { createSuccessResponseSchema } from "@/core/http/responseSchemas";
+import { usersTable } from "@/db/userSchema";
 import { z } from "@hono/zod-openapi";
+import { createSelectSchema } from "drizzle-zod";
 
-export const UserSchema = z.object({
+export const UserSelectSchema = createSelectSchema(usersTable);
+
+export const UserSchema = UserSelectSchema.pick({
+  id: true,
+  name: true,
+  email: true,
+  avatar_url: true,
+  created_at: true,
+}).extend({
   id: z.number().int().openapi({
     example: 1,
     description: "User unique identifier",
@@ -13,7 +20,7 @@ export const UserSchema = z.object({
     example: "John Doe",
     description: "User full name",
   }),
-  email: z.email().openapi({
+  email: z.string().email().openapi({
     example: "user@example.com",
     description: "User email address",
   }),
@@ -32,4 +39,5 @@ export const UserSchema = z.object({
 export const UserSuccessResponseSchema =
   createSuccessResponseSchema(UserSchema);
 
-export const UserErrorResponseSchema = createErrorResponseSchema(z.string());
+export type User = z.infer<typeof UserSchema>;
+export type UserSelect = z.infer<typeof UserSelectSchema>;

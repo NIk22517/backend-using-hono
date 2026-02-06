@@ -1,7 +1,7 @@
+import { z } from "zod";
+
 import { Services } from "@/core/di/types";
 import { BaseController } from "@/core/http/BaseController";
-import { responseWrapper } from "@/core/http/responseWrapper";
-import { z } from "zod";
 import { openApiResponseWrapper } from "@/core/http/openApiResponseWrapper";
 import { createNewChatSchema, GetChatMessagesSchema } from "./chat.schemas";
 

@@ -2,10 +2,12 @@ import { authMiddleware } from "@/middleware/authMiddleware";
 import { UserController } from "./UserController";
 import { services } from "@/core/di/container";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { UserSuccessResponseSchema } from "./user.schemas";
 import {
-  UserErrorResponseSchema,
-  UserSuccessResponseSchema,
-} from "./user.schemas";
+  createAuthenticatedRequest,
+  createSuccessResponse,
+  createMultipartRequest,
+} from "../../core/utils/createRouteUtils";
 
 const controller = new UserController(services);
 
@@ -19,47 +21,11 @@ const getCurrentUserRoute = createRoute({
   tags: ["Users"],
   summary: "Get current user profile",
   description: "Retrieve the authenticated user's profile information",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
-    }),
-  },
-  responses: {
-    200: {
-      description: "Authenticated user profile",
-      content: {
-        "application/json": {
-          schema: UserSuccessResponseSchema,
-        },
-      },
-    },
-    400: {
-      content: {
-        "application/json": {
-          schema: UserErrorResponseSchema,
-        },
-      },
-      description: "Bad Request",
-    },
-    401: {
-      content: {
-        "application/json": {
-          schema: UserErrorResponseSchema,
-        },
-      },
-      description: "Unauthorized",
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: UserErrorResponseSchema,
-        },
-      },
-    },
-  },
+  request: createAuthenticatedRequest(),
+  responses: createSuccessResponse({
+    schema: UserSuccessResponseSchema,
+    description: "Authenticated user profile",
+  }),
 });
 
 userRouter.openapi(getCurrentUserRoute, controller.getTokenUser);
@@ -70,12 +36,7 @@ const getUserByIdRoute = createRoute({
   tags: ["Users"],
   summary: "Get user by ID",
   description: "Retrieve a user's profile information by their ID",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
-    }),
+  request: createAuthenticatedRequest({
     params: z.object({
       user_id: z.coerce.number().openapi({
         param: {
@@ -86,41 +47,11 @@ const getUserByIdRoute = createRoute({
         description: "User ID",
       }),
     }),
-  },
-  responses: {
-    200: {
-      description: "Authenticated user profile",
-      content: {
-        "application/json": {
-          schema: UserSuccessResponseSchema,
-        },
-      },
-    },
-    400: {
-      content: {
-        "application/json": {
-          schema: UserErrorResponseSchema,
-        },
-      },
-      description: "Bad Request",
-    },
-    401: {
-      content: {
-        "application/json": {
-          schema: UserErrorResponseSchema,
-        },
-      },
-      description: "Unauthorized",
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: UserErrorResponseSchema,
-        },
-      },
-    },
-  },
+  }),
+  responses: createSuccessResponse({
+    schema: UserSuccessResponseSchema,
+    description: "Authenticated user profile",
+  }),
 });
 
 userRouter.openapi(getUserByIdRoute, controller.getUserById);
@@ -131,63 +62,24 @@ const updateUserRoute = createRoute({
   tags: ["Users"],
   summary: "Update user profile",
   description: "Update the authenticated user's profile information",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+  request: createAuthenticatedRequest({
+    body: createMultipartRequest({
+      schema: z.object({
+        name: z.string().optional(),
+        file: z
+          .file()
+          .openapi({
+            type: "string",
+            format: "binary",
+          })
+          .optional(),
       }),
     }),
-    body: {
-      content: {
-        "multipart/form-data": {
-          schema: z.object({
-            name: z.string().optional(),
-            file: z
-              .file()
-              .openapi({
-                type: "string",
-                format: "binary",
-              })
-              .optional(),
-          }),
-        },
-      },
-    },
-  },
-  responses: {
-    200: {
-      description: "Authenticated user profile",
-      content: {
-        "application/json": {
-          schema: UserSuccessResponseSchema,
-        },
-      },
-    },
-    400: {
-      content: {
-        "application/json": {
-          schema: UserErrorResponseSchema,
-        },
-      },
-      description: "Bad Request",
-    },
-    401: {
-      content: {
-        "application/json": {
-          schema: UserErrorResponseSchema,
-        },
-      },
-      description: "Unauthorized",
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: UserErrorResponseSchema,
-        },
-      },
-    },
-  },
+  }),
+  responses: createSuccessResponse({
+    schema: UserSuccessResponseSchema,
+    description: "Updated Data Successfully",
+  }),
 });
 
 userRouter.openapi(updateUserRoute, controller.editUserDetails);

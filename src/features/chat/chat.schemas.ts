@@ -5,15 +5,119 @@ import {
 import {
   chatTypeEnum,
   messageDeleteActionEnum,
-  messageTypeEnum,
+  chats,
+  chatPins,
+  chatMembers,
+  chatMessages,
+  chatMessageAttachments,
+  chatMessageReadReceipts,
+  chatReadSummary,
+  chatMessageDeletes,
+  chatClearStates,
+  chatScheduleMessages,
 } from "@/db/chatSchema";
 import { z } from "@hono/zod-openapi";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 
-//create chat schema start
+export const ChatInsertSchema = createInsertSchema(chats);
+export const ChatSelectSchema = createSelectSchema(chats);
+
+export const ChatPinInsertSchema = createInsertSchema(chatPins);
+export const ChatPinSelectSchema = createSelectSchema(chatPins);
+
+export const ChatMemberInsertSchema = createInsertSchema(chatMembers);
+export const ChatMemberSelectSchema = createSelectSchema(chatMembers);
+
+export const ChatMessageInsertSchema = createInsertSchema(chatMessages);
+export const ChatMessageSelectSchema = createSelectSchema(chatMessages);
+
+export const ChatMessageAttachmentInsertSchema = createInsertSchema(
+  chatMessageAttachments,
+);
+export const ChatMessageAttachmentSelectSchema = createSelectSchema(
+  chatMessageAttachments,
+);
+
+export const ChatMessageReadReceiptInsertSchema = createInsertSchema(
+  chatMessageReadReceipts,
+);
+export const ChatMessageReadReceiptSelectSchema = createSelectSchema(
+  chatMessageReadReceipts,
+);
+
+export const ChatReadSummaryInsertSchema = createInsertSchema(chatReadSummary);
+export const ChatReadSummarySelectSchema = createSelectSchema(chatReadSummary, {
+  last_read_at: z.date().transform((d) => d.toISOString()),
+  updated_at: z.date().transform((d) => d.toISOString()),
+});
+
+export const ChatMessageDeleteInsertSchema =
+  createInsertSchema(chatMessageDeletes);
+export const ChatMessageDeleteSelectSchema = createSelectSchema(
+  chatMessageDeletes,
+  {
+    deleted_at: z.date().transform((d) => d.toISOString()),
+  },
+);
+
+export const ChatClearStateInsertSchema = createInsertSchema(chatClearStates);
+export const ChatClearStateSelectSchema = createSelectSchema(chatClearStates, {
+  cleared_at: z.date().transform((d) => d.toISOString()),
+});
+
+export const ChatScheduleMessageInsertSchema =
+  createInsertSchema(chatScheduleMessages);
+export const ChatScheduleMessageSelectSchema = createSelectSchema(
+  chatScheduleMessages,
+  {
+    scheduled_at: z.date().transform((d) => d.toISOString()),
+    last_attempt_at: z
+      .date()
+      .nullable()
+      .transform((d) => d?.toISOString()),
+    completed_at: z
+      .date()
+      .nullable()
+      .transform((d) => d?.toISOString()),
+    created_at: z.date().transform((d) => d.toISOString()),
+  },
+);
+
+// ============================================
+// COMMON PARAMETER SCHEMAS
+// ============================================
+
+export const chatIdParamSchema = z.object({
+  chat_id: z.coerce.number().openapi({
+    param: { name: "chat_id", in: "path" },
+    example: 1,
+    description: "Chat Room ID",
+  }),
+});
+
+export const chatListPaginationQuerySchema = z.object({
+  limit: z.coerce.number().optional().openapi({
+    example: 10,
+    description: "Number of items to return",
+  }),
+  offset: z.coerce.number().optional().openapi({
+    example: 0,
+    description: "Number of items to skip",
+  }),
+});
+
+// ============================================
+// CREATE CHAT SCHEMAS
+// ============================================
+
+/**
+ * Request schema for creating a new chat
+ * Extends the base insert schema with validation rules
+ */
 export const createNewChatSchema = z.object({
   data: z.object({
     user_ids: z
-      .array(z.coerce.number())
+      .array(z.number())
       .min(1)
       .openapi({
         description: "List of user IDs to include in the chat",
@@ -30,36 +134,25 @@ export const createNewChatSchema = z.object({
   }),
 });
 
+/**
+ * Response schemas for chat creation
+ */
 const ExistingChatResponse = z.object({
-  newChat: z.object({
-    id: z.number().openapi({
-      description: "Unique identifier of the chat",
-      example: 101,
-    }),
-  }),
+  newChat: ChatSelectSchema.pick({ id: true }),
 });
 
 const NewChatCreatedResponse = z.object({
-  newChat: z.object({
-    id: z.number().openapi({
-      description: "Unique identifier of the chat",
-      example: 101,
-    }),
-    name: z.string().nullable().openapi({
-      description: "Chat name. Null for single chats",
-      example: "Delivery Team",
-    }),
-    chat_type: z.enum(chatTypeEnum.enumValues).openapi({
-      description: "Type of chat",
-      example: "group",
-    }),
+  newChat: ChatSelectSchema.pick({
+    id: true,
+    name: true,
+    chat_type: true,
+    created_at: true,
+    created_by: true,
+    updated_at: true,
+  }).extend({
     created_at: z.date().nullable().openapi({
       description: "Timestamp when the chat was created",
       example: "2026-01-22T10:15:30.000Z",
-    }),
-    created_by: z.number().openapi({
-      description: "User ID who created the chat",
-      example: 12,
     }),
     updated_at: z.date().nullable().openapi({
       description: "Timestamp when the chat was last updated",
@@ -77,18 +170,18 @@ export const CreateChatSuccessResponseSchema =
 
 export const ChatErrorResponseSchema = createErrorResponseSchema(z.string());
 
-//create chat schema end
+// ============================================
+// CHAT LIST SCHEMAS
+// ============================================
 
-// get chat list schema start
-
+/**
+ * Schema for individual chat in the list
+ * Combines data from multiple tables
+ */
 export const ResultChatListSchema = z.object({
   chat_id: z.number().openapi({ example: 9 }),
-  chat_name: z.string().openapi({
-    example: "Frontend Team",
-  }),
-  chat_type: z.enum(chatTypeEnum.enumValues).openapi({
-    example: "group",
-  }),
+  chat_name: z.string().openapi({ example: "Frontend Team" }),
+  chat_type: z.enum(chatTypeEnum.enumValues).openapi({ example: "group" }),
   created_at: z.date().nullable().openapi({
     description: "Timestamp when the chat was created",
     example: "2026-01-22T10:00:00.000Z",
@@ -97,9 +190,7 @@ export const ResultChatListSchema = z.object({
     z.object({
       id: z.number().openapi({ example: 1 }),
       name: z.string().openapi({ example: "John Doe" }),
-      email: z.email().openapi({
-        example: "john.doe@example.com",
-      }),
+      email: z.email().openapi({ example: "john.doe@example.com" }),
     }),
   ),
   last_message: z
@@ -135,7 +226,6 @@ export const ResultChatListSchema = z.object({
     example: 3,
     description: "Number of unread messages for the user",
   }),
-
   is_pinned: z.boolean().openapi({
     example: false,
     description: "Whether the chat is pinned by the user",
@@ -146,48 +236,50 @@ export const ChatListSuccessResponseSchema = createSuccessResponseSchema(
   z.array(ResultChatListSchema),
 );
 
-export const SingleChatListSchema = z.object({
-  chat_id: z.number().openapi({
-    description: "Unique identifier of the chat",
-    example: 9,
-  }),
-
-  chat_name: z.string().nullable().openapi({
-    description: "Name of the chat (null for single chats)",
-    example: "Frontend Team",
-  }),
-
-  chat_type: z.enum(chatTypeEnum.enumValues).openapi({
-    description: "Type of the chat",
-    example: "single",
-  }),
-
-  created_at: z.string().datetime().nullable().openapi({
-    description: "Timestamp when the chat was created",
-    example: "2026-01-22T10:00:00.000Z",
-  }),
-
-  members: z
-    .array(
-      z.object({
-        id: z.number().openapi({
-          description: "User ID of the chat member",
-          example: 1,
-        }),
-        name: z.string().openapi({
-          description: "Full name of the chat member",
-          example: "John Doe",
-        }),
-        email: z.string().email().openapi({
-          description: "Email address of the chat member",
-          example: "john.doe@example.com",
-        }),
-      }),
-    )
-    .openapi({
-      description: "List of users participating in the chat",
+/**
+ * Single chat details schema
+ */
+export const SingleChatListSchema = ChatSelectSchema.pick({
+  id: true,
+  name: true,
+  chat_type: true,
+  created_at: true,
+})
+  .extend({
+    chat_id: z.number().openapi({
+      description: "Unique identifier of the chat",
+      example: 9,
     }),
-});
+    chat_name: z.string().nullable().openapi({
+      description: "Name of the chat (null for single chats)",
+      example: "Frontend Team",
+    }),
+    created_at: z.string().datetime().nullable().openapi({
+      description: "Timestamp when the chat was created",
+      example: "2026-01-22T10:00:00.000Z",
+    }),
+    members: z
+      .array(
+        z.object({
+          id: z.number().openapi({
+            description: "User ID of the chat member",
+            example: 1,
+          }),
+          name: z.string().openapi({
+            description: "Full name of the chat member",
+            example: "John Doe",
+          }),
+          email: z.string().email().openapi({
+            description: "Email address of the chat member",
+            example: "john.doe@example.com",
+          }),
+        }),
+      )
+      .openapi({
+        description: "List of users participating in the chat",
+      }),
+  })
+  .omit({ id: true, name: true });
 
 export const ChatSingleListSuccessResponseSchema =
   createSuccessResponseSchema(SingleChatListSchema);
@@ -202,8 +294,14 @@ export const ChatCoversationContactsSuccessResponseSchema =
     ),
   );
 
+// ============================================
+// PIN/UNPIN SCHEMAS
+// ============================================
+
 export const PinUnpinPayload = z.object({
-  data: z.object({
+  data: ChatPinInsertSchema.pick({
+    chat_id: true,
+  }).extend({
     chat_id: z.string().transform(Number).openapi({
       description: "ID of the chat to pin or unpin",
       example: "12",
@@ -215,75 +313,16 @@ export const PinUnpinPayload = z.object({
   }),
 });
 
-export const ChatPinUnpinSuccessResponseSchema = createSuccessResponseSchema(
-  z.object({
-    id: z.number(),
-    chat_id: z.number(),
-    pinned_by: z.number(),
-    pinned_at: z.date().nullable(),
-  }),
-);
+export const ChatPinUnpinSuccessResponseSchema =
+  createSuccessResponseSchema(ChatPinSelectSchema);
 
-const ReplyMessageSchema = z.object({
-  id: z.number(),
-  chat_id: z.number(),
-  sender_id: z.number(),
-  message: z.string().nullable(),
-  message_type: z.enum(["user", "system"]).nullable(),
-  created_at: z.date().nullable(),
-  updated_at: z.date().nullable(),
-  parent_message_id: z.number().nullable(),
-  search_vector: z.string(),
-});
+// ============================================
+// MESSAGE SCHEMAS
+// ============================================
 
-export const SendMessageSchema = z.object({
-  id: z.number(),
-  chat_id: z.number(),
-  sender_id: z.number(),
-  message: z.string().nullable(),
-  message_type: z.enum(["user", "system"]).nullable(),
-  created_at: z.date().nullable(),
-  updated_at: z.date().nullable(),
-  parent_message_id: z.number().nullable(),
-  search_vector: z.string(),
-  attachments: z.array(z.object({})),
-  reply_data: ReplyMessageSchema.nullable(),
-});
-
-export const ChatSendMessageSuccessSchema =
-  createSuccessResponseSchema(SendMessageSchema);
-
-export const ChatMessagesQuerySchema = z
-  .object({
-    limit: z.coerce.number().int().min(1).max(50).default(20),
-    before_id: z.coerce.number().int().positive().optional(),
-    after_id: z.coerce.number().int().positive().optional(),
-    around_id: z.coerce.number().int().positive().optional(),
-  })
-  .refine(
-    (v) => [v.before_id, v.after_id, v.around_id].filter(Boolean).length <= 1,
-    { message: "Use only one of before_id, after_id or around_id" },
-  );
-
-export const ChatMessagesParamsSchema = z.object({
-  chat_id: z.coerce
-    .number()
-    .int()
-    .positive()
-    .openapi({
-      param: { name: "chat_id", in: "path" },
-      example: 10,
-    }),
-});
-
-export const UserAuthSchema = z.object({
-  user_id: z.number().int().positive(),
-});
-
-export const GetChatMessagesSchema = ChatMessagesParamsSchema.and(
-  ChatMessagesQuerySchema,
-).and(UserAuthSchema);
-
+/**
+ * Cloudinary upload response schema
+ */
 const UploadApiResponseSchema = z.object({
   public_id: z.string(),
   version: z.number(),
@@ -303,6 +342,24 @@ const UploadApiResponseSchema = z.object({
   placeholder: z.boolean().optional(),
 });
 
+/**
+ * Reply message data schema
+ */
+const ReplyMessageSchema = ChatMessageSelectSchema.pick({
+  id: true,
+  chat_id: true,
+  sender_id: true,
+  message: true,
+  message_type: true,
+  created_at: true,
+  updated_at: true,
+  parent_message_id: true,
+  search_vector: true,
+});
+
+/**
+ * Reply data with attachments and sender info
+ */
 const ReplyDataSchema = z.object({
   id: z.number().int().openapi({
     description: "Reply id",
@@ -324,6 +381,9 @@ const ReplyDataSchema = z.object({
   }),
 });
 
+/**
+ * System event data schema
+ */
 const SystemData = z.object({
   event: z.string(),
   actor: z.object({
@@ -340,68 +400,97 @@ const SystemData = z.object({
     .optional(),
 });
 
-export const ChatMessageSchema = z
-  .object({
-    id: z.number().int().openapi({
-      description: "Unique identifier for the message",
-      example: 101,
-    }),
-    chat_id: z.number().int().openapi({
-      description: "The ID of the chat room this message belongs to",
-    }),
-    message_type: z.enum(messageTypeEnum.enumValues).nullable().openapi({
-      description: "Type of message (e.g., user, system)",
-    }),
-    message: z.string().nullable().openapi({
-      description: "The actual text content of the message",
-      example: "Hello, how are you?",
-    }),
-    attachments: z.array(UploadApiResponseSchema).nullable().openapi({
-      description: "List of files or images attached to the message",
-    }),
-    sender_id: z.number().int().openapi({
-      description: "The user ID of the person who sent the message",
-    }),
-    created_at: z.coerce.date().nullable().openapi({
-      description: "Timestamp when the message was sent",
-    }),
-    sender_name: z.string().nullable().openapi({
-      description: "Display name of the sender",
-      example: "John Doe",
-    }),
-    reply_message_id: z.number().nullable().openapi({
-      description: "ID of the parent message if this is a reply",
-    }),
-    delete_action: z.enum(["self", "everyone"]).nullable().openapi({
-      description: "Indicates if the message was deleted and for whom",
-    }),
-    delete_text: z.string().nullable().openapi({
-      description: "Placeholder text shown when a message is deleted",
-      example: "This message was deleted",
-    }),
-    reply_data: ReplyDataSchema.nullable().openapi({
-      description: "Nested data of the message being replied to",
-    }),
-    system_data: SystemData.nullable().openapi({
-      description: "Metadata for system-generated events (joins, leaves, etc.)",
-    }),
-    read_by: z.array(z.string()).openapi({
-      description: "List of user IDs who have seen this message",
-      example: ["user_1", "user_2"],
-    }),
-    unread_by: z.array(z.string()).openapi({
-      description:
-        "List of user IDs in the chat who haven't seen this message yet",
-    }),
-    read_status: z.enum(["read", "unread"]).openapi({
-      description: "Status of the message relative to the current user",
-    }),
-    seen_all: z.boolean().openapi({
-      description: "True if every participant in the chat has read the message",
-    }),
-  })
-  .openapi("ChatMessage");
+/**
+ * Send message response schema
+ */
+export const SendMessageSchema = ChatMessageSelectSchema.extend({
+  attachments: z.array(z.object({})),
+  reply_data: ReplyMessageSchema.nullable(),
+});
 
+export const ChatSendMessageSuccessSchema =
+  createSuccessResponseSchema(SendMessageSchema);
+
+/**
+ * Query parameters for fetching messages
+ */
+export const ChatMessagesQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(50).default(20),
+    before_id: z.coerce.number().int().positive().optional(),
+    after_id: z.coerce.number().int().positive().optional(),
+    around_id: z.coerce.number().int().positive().optional(),
+  })
+  .refine(
+    (v) => [v.before_id, v.after_id, v.around_id].filter(Boolean).length <= 1,
+    { message: "Use only one of before_id, after_id or around_id" },
+  );
+
+export const ChatMessagesParamsSchema = chatIdParamSchema.extend({
+  chat_id: z.coerce
+    .number()
+    .int()
+    .positive()
+    .openapi({
+      param: { name: "chat_id", in: "path" },
+      example: 10,
+    }),
+});
+
+export const UserAuthSchema = z.object({
+  user_id: z.number().int().positive(),
+});
+
+export const GetChatMessagesSchema = ChatMessagesParamsSchema.and(
+  ChatMessagesQuerySchema,
+).and(UserAuthSchema);
+
+/**
+ * Complete chat message schema with all fields
+ */
+export const ChatMessageSchema = ChatMessageSelectSchema.extend({
+  attachments: z.array(UploadApiResponseSchema).nullable().openapi({
+    description: "List of files or images attached to the message",
+  }),
+  sender_name: z.string().nullable().openapi({
+    description: "Display name of the sender",
+    example: "John Doe",
+  }),
+  reply_message_id: z.number().nullable().openapi({
+    description: "ID of the parent message if this is a reply",
+  }),
+  delete_action: z.enum(["self", "everyone"]).nullable().openapi({
+    description: "Indicates if the message was deleted and for whom",
+  }),
+  delete_text: z.string().nullable().openapi({
+    description: "Placeholder text shown when a message is deleted",
+    example: "This message was deleted",
+  }),
+  reply_data: ReplyDataSchema.nullable().openapi({
+    description: "Nested data of the message being replied to",
+  }),
+  system_data: SystemData.nullable().openapi({
+    description: "Metadata for system-generated events (joins, leaves, etc.)",
+  }),
+  read_by: z.array(z.string()).openapi({
+    description: "List of user IDs who have seen this message",
+    example: ["user_1", "user_2"],
+  }),
+  unread_by: z.array(z.string()).openapi({
+    description:
+      "List of user IDs in the chat who haven't seen this message yet",
+  }),
+  read_status: z.enum(["read", "unread"]).openapi({
+    description: "Status of the message relative to the current user",
+  }),
+  seen_all: z.boolean().openapi({
+    description: "True if every participant in the chat has read the message",
+  }),
+}).omit({ search_vector: true });
+
+/**
+ * Pagination info schema
+ */
 export const PagingInfoSchema = z
   .object({
     has_older: z.boolean().openapi({
@@ -443,46 +532,21 @@ export const ChatGetMessagesSuccessSchema = createSuccessResponseSchema(
   ChatMessagesResponseSchema,
 );
 
-export type InternalChatMessageRequest = z.infer<typeof GetChatMessagesSchema>;
-export type UploadApiResponse = z.infer<typeof UploadApiResponseSchema>;
-export type ReplyData = z.infer<typeof ReplyDataSchema>;
-export type SystemData = z.infer<typeof SystemData>;
-export type ChatMessage = z.infer<typeof ChatMessageSchema>;
-export type PagingInfo = z.infer<typeof PagingInfoSchema>;
-export type ChatMessagesResponse = z.infer<typeof ChatMessagesResponseSchema>;
+// ============================================
+// SCHEDULE MESSAGE SCHEMAS
+// ============================================
 
-export const scheduleSchema = z.object({
+export const scheduleSchema = ChatScheduleMessageInsertSchema.pick({
+  chat_id: true,
+  message: true,
+  scheduled_at: true,
+}).extend({
   chat_id: z.coerce.number(),
   message: z.string().default(""),
   scheduled_at: z.preprocess((arg) => {
     if (typeof arg === "string" || arg instanceof Date) return new Date(arg);
   }, z.date()),
 });
-
-import { createSelectSchema } from "drizzle-zod";
-import {
-  chatScheduleMessages,
-  chatReadSummary,
-  chatClearStates,
-  chatMessageDeletes,
-} from "../../db/chatSchema";
-
-export const ChatScheduleMessageSelectSchema = createSelectSchema(
-  chatScheduleMessages,
-  {
-    // Convert Date → ISO string for API response
-    scheduled_at: z.date().transform((d) => d.toISOString()),
-    last_attempt_at: z
-      .date()
-      .nullable()
-      .transform((d) => d?.toISOString()),
-    completed_at: z
-      .date()
-      .nullable()
-      .transform((d) => d?.toISOString()),
-    created_at: z.date().transform((d) => d.toISOString()),
-  },
-);
 
 export const ChatScheduleMessagesSuccessSchema = createSuccessResponseSchema(
   ChatScheduleMessageSelectSchema,
@@ -525,13 +589,12 @@ export const updateScheduleSchema = z.object({
   }),
 });
 
-export const ChatSReadMessageSchema = createSelectSchema(chatReadSummary, {
-  last_read_at: z.date().transform((d) => d.toISOString()),
-  updated_at: z.date().transform((d) => d.toISOString()),
-});
+// ============================================
+// READ/DELETE MESSAGE SCHEMAS
+// ============================================
 
 export const ChatMarkAsReadSuccessSchema = createSuccessResponseSchema(
-  ChatSReadMessageSchema,
+  ChatReadSummarySelectSchema,
 );
 
 export const DeleteMessageSchema = z.object({
@@ -548,17 +611,13 @@ export const DeleteMessageSchema = z.object({
   ]),
 });
 
-const ChatDeleteMessageSchema = createSelectSchema(chatMessageDeletes, {
-  deleted_at: z.date().transform((d) => d.toISOString()),
-});
-
-const ChatClearMessageSchema = createSelectSchema(chatClearStates, {
-  cleared_at: z.date().transform((d) => d.toISOString()),
-});
-
 export const ChatDeleteMessageSuccessSchema = createSuccessResponseSchema(
-  z.array(z.union([ChatDeleteMessageSchema, ChatClearMessageSchema])),
+  z.array(z.union([ChatMessageDeleteSelectSchema, ChatClearStateSelectSchema])),
 );
+
+// ============================================
+// MESSAGE STATUS SCHEMAS
+// ============================================
 
 export const ChatMessageStatusSuccessSchema = createSuccessResponseSchema(
   z.object({
@@ -570,6 +629,10 @@ export const ChatMessageStatusSuccessSchema = createSuccessResponseSchema(
     ),
   }),
 );
+
+// ============================================
+// SEARCH MESSAGE SCHEMAS
+// ============================================
 
 const ChatSearchMessageSchema = z.object({
   id: z.number(),
@@ -587,3 +650,15 @@ const ChatSearchMessagesResponseSchema = z.object({
 export const ChatSearchMessageSuccessSchema = createSuccessResponseSchema(
   ChatSearchMessagesResponseSchema,
 );
+
+// ============================================
+// TYPE EXPORTS
+// ============================================
+
+export type InternalChatMessageRequest = z.infer<typeof GetChatMessagesSchema>;
+export type UploadApiResponse = z.infer<typeof UploadApiResponseSchema>;
+export type ReplyData = z.infer<typeof ReplyDataSchema>;
+export type SystemData = z.infer<typeof SystemData>;
+export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+export type PagingInfo = z.infer<typeof PagingInfoSchema>;
+export type ChatMessagesResponse = z.infer<typeof ChatMessagesResponseSchema>;

@@ -4,7 +4,6 @@ import { services } from "@/core/di/container";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import {
   ChatCoversationContactsSuccessResponseSchema,
-  ChatErrorResponseSchema,
   ChatGetMessagesSuccessSchema,
   ChatListSuccessResponseSchema,
   ChatMessagesQuerySchema,
@@ -25,9 +24,17 @@ import {
   ChatDeleteMessageSuccessSchema,
   ChatMessageStatusSuccessSchema,
   ChatSearchMessageSuccessSchema,
+  chatListPaginationQuerySchema,
+  chatIdParamSchema,
 } from "./chat.schemas";
 import { toAppError } from "@/core/errors";
 import { ResponseBuilder } from "@/core/utils/ResponseBuilder";
+import {
+  createAuthenticatedRequest,
+  createSuccessResponse,
+  createJsonRequest,
+  createMultipartRequest,
+} from "../../core/utils/createRouteUtils";
 
 const controller = new ChatController(services);
 const chatRouter = new OpenAPIHono({
@@ -54,89 +61,13 @@ const chatListRoute = createRoute({
   path: "/",
   tags: ["Chat"],
   description: "Get chat list",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
-    }),
-    query: z.object({
-      limit: z.coerce.number().optional().openapi({
-        example: 10,
-        description: "Number of chats to return",
-      }),
-      offset: z.coerce.number().optional().openapi({
-        example: 0,
-        description: "Number of chats to skip",
-      }),
-    }),
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: ChatListSuccessResponseSchema,
-        },
-      },
-      description: "Chat list fetched successfully",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+  request: createAuthenticatedRequest({
+    query: chatListPaginationQuerySchema,
+  }),
+  responses: createSuccessResponse({
+    schema: ChatListSuccessResponseSchema,
+    description: "Chat list fetched successfully",
+  }),
 });
 
 chatRouter.openapi(chatListRoute, controller.getChats);
@@ -146,89 +77,13 @@ const chatSingleListRoute = createRoute({
   path: "/list/{chat_id}",
   tags: ["Chat"],
   description: "Get chat list",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
-    }),
-    params: z.object({
-      chat_id: z.coerce.number().openapi({
-        param: {
-          name: "chat_id",
-          in: "path",
-        },
-        example: "1",
-        description: "Chat Room ID",
-      }),
-    }),
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: ChatSingleListSuccessResponseSchema,
-        },
-      },
-      description: "Chat list fetched successfully",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema,
+  }),
+  responses: createSuccessResponse({
+    schema: ChatSingleListSuccessResponseSchema,
+    description: "Chat list fetched successfully",
+  }),
 });
 
 chatRouter.openapi(chatSingleListRoute, controller.getSingleChatList);
@@ -238,79 +93,11 @@ const chatCoversationContactsRoute = createRoute({
   path: "/conversation-contacts",
   tags: ["Chat"],
   description: "Get conversation-contacts list",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
-    }),
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: ChatCoversationContactsSuccessResponseSchema,
-        },
-      },
-      description: "Chat list fetched successfully",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+  request: createAuthenticatedRequest(),
+  responses: createSuccessResponse({
+    schema: ChatCoversationContactsSuccessResponseSchema,
+    description: "Chat list fetched successfully",
+  }),
 });
 
 chatRouter.openapi(
@@ -318,184 +105,40 @@ chatRouter.openapi(
   controller.getConversationContact,
 );
 
-const createChatRoute = createRoute({
+const createChat = createRoute({
   method: "post",
   path: "/create",
   tags: ["Chat"],
   description: "Create a new chat",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
-    }),
-    body: {
-      content: {
-        "application/json": {
-          schema: createNewChatSchema,
-        },
-      },
+  request: createAuthenticatedRequest({
+    body: createJsonRequest({
+      schema: createNewChatSchema,
       description: "Creating new chat data",
-      required: true,
-    },
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: CreateChatSuccessResponseSchema,
-        },
-      },
-      description: "Chat Created success response",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: CreateChatSuccessResponseSchema,
+    description: "Chat Created Successfully",
+  }),
 });
 
-chatRouter.openapi(createChatRoute, controller.createChat);
+chatRouter.openapi(createChat, controller.createChat);
 
 const pinUnpinChatRoute = createRoute({
   method: "post",
   path: "/pin",
   tags: ["Chat"],
   description: "Pin/Unpin chat room",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
-    }),
-    body: {
-      content: {
-        "application/json": {
-          schema: PinUnpinPayload,
-        },
-      },
+  request: createAuthenticatedRequest({
+    body: createJsonRequest({
+      schema: PinUnpinPayload,
       description: "Payload for the chat pin/unpin",
-      required: true,
-    },
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: ChatPinUnpinSuccessResponseSchema,
-        },
-      },
-      description: "",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ChatPinUnpinSuccessResponseSchema,
+    description: "Chat Pin/Unpin Successfully",
+  }),
 });
 
 chatRouter.openapi(pinUnpinChatRoute, controller.pinUnpinChat);
@@ -504,114 +147,28 @@ const chatSendMsgRoute = createRoute({
   method: "post",
   path: "/send-message",
   tags: ["Chat"],
-  description: "",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+  description: "Send Chat Messages",
+  request: createAuthenticatedRequest({
+    body: createMultipartRequest({
+      schema: z.object({
+        message: z.string().optional(),
+        chat_id: z.string(),
+        reply_message_id: z.string().optional(),
+        files: z
+          .array(
+            z.file().openapi({
+              type: "string",
+              format: "binary",
+            }),
+          )
+          .optional(),
       }),
     }),
-    body: {
-      content: {
-        "application/x-www-form-urlencoded": {
-          schema: z.object({
-            message: z.string().optional(),
-            chat_id: z.string(),
-            reply_message_id: z.string().optional(),
-            files: z
-              .array(
-                z.file().openapi({
-                  type: "string",
-                  format: "binary",
-                }),
-              )
-              .optional(),
-          }),
-        },
-        "multipart/form-data": {
-          schema: z.object({
-            message: z.string().optional(),
-            chat_id: z.string(),
-            reply_message_id: z.string().optional(),
-            files: z
-              .array(
-                z.file().openapi({
-                  type: "string",
-                  format: "binary",
-                }),
-              )
-              .optional(),
-          }),
-        },
-      },
-    },
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: ChatSendMessageSuccessSchema,
-        },
-      },
-      description: "",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+  }),
+  responses: createSuccessResponse({
+    schema: ChatSendMessageSuccessSchema,
+    description: "Message Send Successfully",
+  }),
 });
 
 chatRouter.openapi(chatSendMsgRoute, controller.sendMessage);
@@ -621,81 +178,14 @@ const chatMessagesRoute = createRoute({
   path: "/messages/{chat_id}",
   tags: ["Chat"],
   description: "Get All Chat Messages",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
-    }),
+  request: createAuthenticatedRequest({
     params: ChatMessagesParamsSchema,
     query: ChatMessagesQuerySchema,
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: ChatGetMessagesSuccessSchema,
-        },
-      },
-      description: "Get Chat Messages",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+  }),
+  responses: createSuccessResponse({
+    schema: ChatGetMessagesSuccessSchema,
+    description: "Get Chat Messages Successfully",
+  }),
 });
 
 chatRouter.openapi(chatMessagesRoute, controller.getChatMessages);
@@ -705,89 +195,15 @@ const chatScheduleMessage = createRoute({
   path: "/messages/schedule",
   tags: ["Chat"],
   description: "Chat Messages Schedule",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
+  request: createAuthenticatedRequest({
+    body: createMultipartRequest({
+      schema: scheduleSchema,
     }),
-    body: {
-      content: {
-        "application/x-www-form-urlencoded": {
-          schema: scheduleSchema,
-        },
-        "multipart/form-data": {
-          schema: scheduleSchema,
-        },
-      },
-    },
-  },
-  responses: {
-    200: {
-      description: "Successfully Schedule Messages",
-      content: {
-        "application/json": {
-          schema: ChatScheduleMessagesSuccessSchema,
-        },
-      },
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+  }),
+  responses: createSuccessResponse({
+    schema: ChatScheduleMessagesSuccessSchema,
+    description: "Successfully Schedule Messages",
+  }),
 });
 
 chatRouter.openapi(chatScheduleMessage, controller.scheduleMessages);
@@ -797,82 +213,13 @@ const getScheduleMessage = createRoute({
   path: "/schedule/{chat_id}",
   tags: ["Chat"],
   description: "Get All Schedule Messages",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
-    }),
-    params: z.object({
-      chat_id: z.coerce.number(),
-    }),
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: ChatGetScheduleSuccessSchema,
-        },
-      },
-      description: "Schedule Messages Get Successfully",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema,
+  }),
+  responses: createSuccessResponse({
+    schema: ChatGetScheduleSuccessSchema,
+    description: "Schedule Messages Get Successfully",
+  }),
 });
 
 chatRouter.openapi(getScheduleMessage, controller.getScheduleMessage);
@@ -882,82 +229,15 @@ const deleteSchedule = createRoute({
   path: "/schedule/{schedule_id}",
   tags: ["Chat"],
   description: "Delete Schedule",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
-    }),
+  request: createAuthenticatedRequest({
     params: z.object({
       schedule_id: z.string(),
     }),
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: ScheduleMessagesSuccessSchema,
-        },
-      },
-      description: "Schedule Deleted Successfully",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+  }),
+  responses: createSuccessResponse({
+    schema: ScheduleMessagesSuccessSchema,
+    description: "Schedule Deleted Successfully",
+  }),
 });
 
 chatRouter.openapi(deleteSchedule, controller.deleteScheduleMessage);
@@ -967,86 +247,16 @@ const updateSchedule = createRoute({
   path: "/schedule",
   tags: ["Chat"],
   description: "Update Schedule Message",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
+  request: createAuthenticatedRequest({
+    body: createJsonRequest({
+      schema: updateScheduleSchema,
+      description: "Update Schedule Message payload",
     }),
-    body: {
-      content: {
-        "application/json": {
-          schema: updateScheduleSchema,
-        },
-      },
-    },
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: ScheduleMessagesSuccessSchema,
-        },
-      },
-      description: "Schedule Updated Successfully",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+  }),
+  responses: createSuccessResponse({
+    schema: ScheduleMessagesSuccessSchema,
+    description: "Schedule Updated Successfully",
+  }),
 });
 
 chatRouter.openapi(updateSchedule, controller.updateScheduleMessages);
@@ -1056,82 +266,13 @@ const chatMarkAsReadMessage = createRoute({
   path: "/read/{chat_id}",
   tags: ["Chat"],
   description: "Mark Chat as read",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
-    }),
-    params: z.object({
-      chat_id: z.string(),
-    }),
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: ChatMarkAsReadSuccessSchema,
-        },
-      },
-      description: "Chat Mark as Read",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema,
+  }),
+  responses: createSuccessResponse({
+    schema: ChatMarkAsReadSuccessSchema,
+    description: "Mark Chat Messages as Read",
+  }),
 });
 
 chatRouter.openapi(chatMarkAsReadMessage, controller.markAsReadMsg);
@@ -1141,86 +282,15 @@ const chatDeleteMessageRoute = createRoute({
   path: "/messages/delete",
   tags: ["Chat"],
   description: "Delete Chat Messages or clear chat",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
+  request: createAuthenticatedRequest({
+    body: createJsonRequest({
+      schema: DeleteMessageSchema,
     }),
-    body: {
-      content: {
-        "application/json": {
-          schema: DeleteMessageSchema,
-        },
-      },
-    },
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: ChatDeleteMessageSuccessSchema,
-        },
-      },
-      description: "Delete Messages Successfully",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+  }),
+  responses: createSuccessResponse({
+    schema: ChatDeleteMessageSuccessSchema,
+    description: "Delete Messages Successfully",
+  }),
 });
 
 chatRouter.openapi(chatDeleteMessageRoute, controller.deleteMessages);
@@ -1230,83 +300,19 @@ const chatMessageStatusRoute = createRoute({
   path: "/read-status/{chat_id}/{message_id}",
   tags: ["Chat"],
   description: "Get Message Status who have read it or who have received it",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema.extend({
+      message_id: z.coerce.number().openapi({
+        param: { name: "message_id", in: "path" },
+        example: 10,
+        description: "Message ID",
       }),
     }),
-    params: z.object({
-      chat_id: z.string().transform(Number),
-      message_id: z.string().transform(Number),
-    }),
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: ChatMessageStatusSuccessSchema,
-        },
-      },
-      description: "Successfully ",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+  }),
+  responses: createSuccessResponse({
+    schema: ChatMessageStatusSuccessSchema,
+    description: "Success",
+  }),
 });
 
 chatRouter.openapi(chatMessageStatusRoute, controller.checkMessageStatus);
@@ -1316,15 +322,8 @@ const chatSearchMessageRoute = createRoute({
   path: "/messages-search/{chat_id}",
   tags: ["Chat"],
   description: "Search Messages with keywords",
-  request: {
-    headers: z.object({
-      authorization: z.string().openapi({
-        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-      }),
-    }),
-    params: z.object({
-      chat_id: z.string().transform(Number),
-    }),
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema,
     query: z.object({
       search_text: z.string().min(2),
       limit: z.coerce
@@ -1336,73 +335,11 @@ const chatSearchMessageRoute = createRoute({
         .optional(),
       cursor: z.string().optional(),
     }),
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: ChatSearchMessageSuccessSchema,
-        },
-      },
-      description: "Messages Search Successfully",
-    },
-    400: {
-      description: "Bad Request",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    401: {
-      description: "Unauthorized",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    403: {
-      description: "Forbidden",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    404: {
-      description: "Not Found",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    409: {
-      description: "Conflict",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    422: {
-      description: "Validation Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-    500: {
-      description: "Internal Server Error",
-      content: {
-        "application/json": {
-          schema: ChatErrorResponseSchema,
-        },
-      },
-    },
-  },
+  }),
+  responses: createSuccessResponse({
+    schema: ChatSearchMessageSuccessSchema,
+    description: "Messages Search Successfully",
+  }),
 });
 
 chatRouter.openapi(chatSearchMessageRoute, controller.messagesSearch);

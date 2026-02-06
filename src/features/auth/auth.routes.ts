@@ -2,14 +2,11 @@
 import { AuthController } from "./AuthController";
 import { services } from "@/core/di/container";
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
-import {
-  AuthErrorResponseSchema,
-  AuthSuccessResponseSchema,
-  LogInRequestSchema,
-  SignInRequestSchema,
-} from "./auth.schemas";
+import { LogInRequestSchema, SignInRequestSchema } from "./auth.schemas";
 import { toAppError } from "@/core/errors";
 import { ResponseBuilder } from "@/core/utils/ResponseBuilder";
+import { UserSuccessResponseSchema } from "../user/user.schemas";
+import { standardErrorResponses } from "@/core/utils/createRouteUtils";
 
 const controller = new AuthController(services);
 
@@ -29,65 +26,6 @@ const authRoutes = new OpenAPIHono({
     }
   },
 }).basePath("/auth");
-
-const commonErrorResponses = {
-  400: {
-    description: "Bad Request",
-    content: {
-      "application/json": {
-        schema: AuthErrorResponseSchema,
-      },
-    },
-  },
-  401: {
-    description: "Unauthorized",
-    content: {
-      "application/json": {
-        schema: AuthErrorResponseSchema,
-      },
-    },
-  },
-  403: {
-    description: "Forbidden",
-    content: {
-      "application/json": {
-        schema: AuthErrorResponseSchema,
-      },
-    },
-  },
-  404: {
-    description: "Not Found",
-    content: {
-      "application/json": {
-        schema: AuthErrorResponseSchema,
-      },
-    },
-  },
-  409: {
-    description: "Conflict",
-    content: {
-      "application/json": {
-        schema: AuthErrorResponseSchema,
-      },
-    },
-  },
-  422: {
-    description: "Validation Error",
-    content: {
-      "application/json": {
-        schema: AuthErrorResponseSchema,
-      },
-    },
-  },
-  500: {
-    description: "Internal Server Error",
-    content: {
-      "application/json": {
-        schema: AuthErrorResponseSchema,
-      },
-    },
-  },
-} as const;
 
 const signInRoute = createRoute({
   method: "post",
@@ -110,7 +48,7 @@ const signInRoute = createRoute({
     200: {
       content: {
         "application/json": {
-          schema: AuthSuccessResponseSchema,
+          schema: UserSuccessResponseSchema,
           example: {
             service: "auth",
             action: "auth_sign_in",
@@ -130,7 +68,7 @@ const signInRoute = createRoute({
       },
       description: "User created successfully",
     },
-    ...commonErrorResponses,
+    ...standardErrorResponses,
   },
 });
 
@@ -158,7 +96,7 @@ const logInRoute = createRoute({
     200: {
       content: {
         "application/json": {
-          schema: AuthSuccessResponseSchema,
+          schema: UserSuccessResponseSchema,
           example: {
             service: "auth",
             action: "auth_sign_in",
@@ -178,7 +116,7 @@ const logInRoute = createRoute({
       },
       description: "Login successful",
     },
-    ...commonErrorResponses,
+    ...standardErrorResponses,
   },
 });
 

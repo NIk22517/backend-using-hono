@@ -1,84 +1,346 @@
 import { authMiddleware } from "@/middleware/authMiddleware";
-import { Hono } from "hono";
 import { ChatController } from "./ChatController";
 import { services } from "@/core/di/container";
+import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import {
+  ChatCoversationContactsSuccessResponseSchema,
+  ChatGetMessagesSuccessSchema,
+  ChatListSuccessResponseSchema,
+  ChatMessagesQuerySchema,
+  ChatMessagesParamsSchema,
+  ChatPinUnpinSuccessResponseSchema,
+  ChatSendMessageSuccessSchema,
+  ChatSingleListSuccessResponseSchema,
+  CreateChatSuccessResponseSchema,
+  createNewChatSchema,
+  PinUnpinPayload,
+  scheduleSchema,
+  ChatScheduleMessagesSuccessSchema,
+  ChatGetScheduleSuccessSchema,
+  updateScheduleSchema,
+  ScheduleMessagesSuccessSchema,
+  ChatMarkAsReadSuccessSchema,
+  DeleteMessageSchema,
+  ChatDeleteMessageSuccessSchema,
+  ChatMessageStatusSuccessSchema,
+  ChatSearchMessageSuccessSchema,
+  chatListPaginationQuerySchema,
+  chatIdParamSchema,
+} from "./chat.schemas";
+import { toAppError } from "@/core/errors";
+import { ResponseBuilder } from "@/core/utils/ResponseBuilder";
+import {
+  createAuthenticatedRequest,
+  createSuccessResponse,
+  createJsonRequest,
+  createMultipartRequest,
+} from "../../core/utils/createRouteUtils";
 
 const controller = new ChatController(services);
-const chatRouter = new Hono().basePath("/chat").use(authMiddleware);
+const chatRouter = new OpenAPIHono({
+  defaultHook: (result, c) => {
+    if (!result.success) {
+      const error = toAppError(result.error);
+      const errRes = {
+        ...new ResponseBuilder("chat").failure({
+          action: "chat_actions",
+          error: error,
+          message: error.message,
+        }),
+        errorCode: error.code,
+      };
+      return c.json(errRes, error.status);
+    }
+  },
+}).basePath("/chat");
+chatRouter.use(authMiddleware);
 
-chatRouter.get("/", async (c) => {
-  const data = await controller.getChats(c);
-  return c.json(data);
+const chatListRoute = createRoute({
+  method: "get",
+  path: "/",
+  tags: ["Chat"],
+  description: "Get chat list",
+  request: createAuthenticatedRequest({
+    query: chatListPaginationQuerySchema,
+  }),
+  responses: createSuccessResponse({
+    schema: ChatListSuccessResponseSchema,
+    description: "Chat list fetched successfully",
+  }),
 });
 
-chatRouter.get("/list/:chat_id", async (c) => {
-  const data = await controller.getSingleChatList(c);
-  return c.json(data);
+chatRouter.openapi(chatListRoute, controller.getChats);
+
+const chatSingleListRoute = createRoute({
+  method: "get",
+  path: "/list/{chat_id}",
+  tags: ["Chat"],
+  description: "Get chat list",
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema,
+  }),
+  responses: createSuccessResponse({
+    schema: ChatSingleListSuccessResponseSchema,
+    description: "Chat list fetched successfully",
+  }),
 });
 
-chatRouter.get("/conversation-contacts", async (c) => {
-  const data = await controller.getConversationContact(c);
-  return c.json(data);
+chatRouter.openapi(chatSingleListRoute, controller.getSingleChatList);
+
+const chatCoversationContactsRoute = createRoute({
+  method: "get",
+  path: "/conversation-contacts",
+  tags: ["Chat"],
+  description: "Get conversation-contacts list",
+  request: createAuthenticatedRequest(),
+  responses: createSuccessResponse({
+    schema: ChatCoversationContactsSuccessResponseSchema,
+    description: "Chat list fetched successfully",
+  }),
 });
 
-chatRouter.post("/create", async (c) => {
-  const data = await controller.createChat(c);
-  return c.json(data);
+chatRouter.openapi(
+  chatCoversationContactsRoute,
+  controller.getConversationContact,
+);
+
+const createChat = createRoute({
+  method: "post",
+  path: "/create",
+  tags: ["Chat"],
+  description: "Create a new chat",
+  request: createAuthenticatedRequest({
+    body: createJsonRequest({
+      schema: createNewChatSchema,
+      description: "Creating new chat data",
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: CreateChatSuccessResponseSchema,
+    description: "Chat Created Successfully",
+  }),
 });
 
-chatRouter.post("/pin", async (c) => {
-  const data = await controller.pinUnpinChat(c);
-  return c.json(data);
+chatRouter.openapi(createChat, controller.createChat);
+
+const pinUnpinChatRoute = createRoute({
+  method: "post",
+  path: "/pin",
+  tags: ["Chat"],
+  description: "Pin/Unpin chat room",
+  request: createAuthenticatedRequest({
+    body: createJsonRequest({
+      schema: PinUnpinPayload,
+      description: "Payload for the chat pin/unpin",
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ChatPinUnpinSuccessResponseSchema,
+    description: "Chat Pin/Unpin Successfully",
+  }),
 });
 
-chatRouter.post("/send-message", async (c) => {
-  const data = await controller.sendMessage(c);
-  return c.json(data);
+chatRouter.openapi(pinUnpinChatRoute, controller.pinUnpinChat);
+
+const chatSendMsgRoute = createRoute({
+  method: "post",
+  path: "/send-message",
+  tags: ["Chat"],
+  description: "Send Chat Messages",
+  request: createAuthenticatedRequest({
+    body: createMultipartRequest({
+      schema: z.object({
+        message: z.string().optional(),
+        chat_id: z.string(),
+        reply_message_id: z.string().optional(),
+        files: z
+          .array(
+            z.file().openapi({
+              type: "string",
+              format: "binary",
+            }),
+          )
+          .optional(),
+      }),
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ChatSendMessageSuccessSchema,
+    description: "Message Send Successfully",
+  }),
 });
 
-chatRouter.get("/messages/:chat_id", async (c) => {
-  const data = await controller.getChatMessages(c);
-  return c.json(data);
+chatRouter.openapi(chatSendMsgRoute, controller.sendMessage);
+
+const chatMessagesRoute = createRoute({
+  method: "get",
+  path: "/messages/{chat_id}",
+  tags: ["Chat"],
+  description: "Get All Chat Messages",
+  request: createAuthenticatedRequest({
+    params: ChatMessagesParamsSchema,
+    query: ChatMessagesQuerySchema,
+  }),
+  responses: createSuccessResponse({
+    schema: ChatGetMessagesSuccessSchema,
+    description: "Get Chat Messages Successfully",
+  }),
 });
 
-chatRouter.post("/messages/schedule", async (c) => {
-  const data = await controller.scheduleMessages(c);
-  return c.json(data);
+chatRouter.openapi(chatMessagesRoute, controller.getChatMessages);
+
+const chatScheduleMessage = createRoute({
+  method: "post",
+  path: "/messages/schedule",
+  tags: ["Chat"],
+  description: "Chat Messages Schedule",
+  request: createAuthenticatedRequest({
+    body: createMultipartRequest({
+      schema: scheduleSchema,
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ChatScheduleMessagesSuccessSchema,
+    description: "Successfully Schedule Messages",
+  }),
 });
 
-chatRouter.get("/schedule/:chat_id", async (c) => {
-  const data = await controller.getScheduleMessage(c);
-  return c.json(data);
+chatRouter.openapi(chatScheduleMessage, controller.scheduleMessages);
+
+const getScheduleMessage = createRoute({
+  method: "get",
+  path: "/schedule/{chat_id}",
+  tags: ["Chat"],
+  description: "Get All Schedule Messages",
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema,
+  }),
+  responses: createSuccessResponse({
+    schema: ChatGetScheduleSuccessSchema,
+    description: "Schedule Messages Get Successfully",
+  }),
 });
 
-chatRouter.delete("/schedule/:schedule_id", async (c) => {
-  const data = await controller.deleteScheduleMessage(c);
-  return c.json(data);
+chatRouter.openapi(getScheduleMessage, controller.getScheduleMessage);
+
+const deleteSchedule = createRoute({
+  method: "delete",
+  path: "/schedule/{schedule_id}",
+  tags: ["Chat"],
+  description: "Delete Schedule",
+  request: createAuthenticatedRequest({
+    params: z.object({
+      schedule_id: z.string(),
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ScheduleMessagesSuccessSchema,
+    description: "Schedule Deleted Successfully",
+  }),
 });
 
-chatRouter.post("/schedule", async (c) => {
-  const data = await controller.updateScheduleMessages(c);
-  return c.json(data);
+chatRouter.openapi(deleteSchedule, controller.deleteScheduleMessage);
+
+const updateSchedule = createRoute({
+  method: "post",
+  path: "/schedule",
+  tags: ["Chat"],
+  description: "Update Schedule Message",
+  request: createAuthenticatedRequest({
+    body: createJsonRequest({
+      schema: updateScheduleSchema,
+      description: "Update Schedule Message payload",
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ScheduleMessagesSuccessSchema,
+    description: "Schedule Updated Successfully",
+  }),
 });
 
-chatRouter.get("/read/:chat_id", async (c) => {
-  const data = await controller.markAsReadMsg(c);
-  return c.json(data);
+chatRouter.openapi(updateSchedule, controller.updateScheduleMessages);
+
+const chatMarkAsReadMessage = createRoute({
+  method: "get",
+  path: "/read/{chat_id}",
+  tags: ["Chat"],
+  description: "Mark Chat as read",
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema,
+  }),
+  responses: createSuccessResponse({
+    schema: ChatMarkAsReadSuccessSchema,
+    description: "Mark Chat Messages as Read",
+  }),
 });
 
-chatRouter.post("/messages/delete", async (c) => {
-  const data = await controller.deleteMessages(c);
-  return c.json(data);
+chatRouter.openapi(chatMarkAsReadMessage, controller.markAsReadMsg);
+
+const chatDeleteMessageRoute = createRoute({
+  method: "post",
+  path: "/messages/delete",
+  tags: ["Chat"],
+  description: "Delete Chat Messages or clear chat",
+  request: createAuthenticatedRequest({
+    body: createJsonRequest({
+      schema: DeleteMessageSchema,
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ChatDeleteMessageSuccessSchema,
+    description: "Delete Messages Successfully",
+  }),
 });
 
-chatRouter.get("/read-status/:chat_id/:message_id", async (c) => {
-  const data = await controller.checkMessageStatus(c);
-  return c.json(data);
+chatRouter.openapi(chatDeleteMessageRoute, controller.deleteMessages);
+
+const chatMessageStatusRoute = createRoute({
+  method: "get",
+  path: "/read-status/{chat_id}/{message_id}",
+  tags: ["Chat"],
+  description: "Get Message Status who have read it or who have received it",
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema.extend({
+      message_id: z.coerce.number().openapi({
+        param: { name: "message_id", in: "path" },
+        example: 10,
+        description: "Message ID",
+      }),
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ChatMessageStatusSuccessSchema,
+    description: "Success",
+  }),
 });
 
-chatRouter.get("/messages-search/:chat_id", async (c) => {
-  const data = await controller.messagesSearch(c);
-  return c.json(data);
+chatRouter.openapi(chatMessageStatusRoute, controller.checkMessageStatus);
+
+const chatSearchMessageRoute = createRoute({
+  method: "get",
+  path: "/messages-search/{chat_id}",
+  tags: ["Chat"],
+  description: "Search Messages with keywords",
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema,
+    query: z.object({
+      search_text: z.string().min(2),
+      limit: z.coerce
+        .number()
+        .min(1, {
+          message: "Limit should be greater then zero",
+        })
+        .max(20)
+        .optional(),
+      cursor: z.string().optional(),
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ChatSearchMessageSuccessSchema,
+    description: "Messages Search Successfully",
+  }),
 });
+
+chatRouter.openapi(chatSearchMessageRoute, controller.messagesSearch);
 
 export default chatRouter;

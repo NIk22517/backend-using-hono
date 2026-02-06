@@ -1,38 +1,15 @@
+import { z } from "zod";
+
 import { Services } from "@/core/di/types";
 import { BaseController } from "@/core/http/BaseController";
-import { responseWrapper } from "@/core/http/responseWrapper";
-import { z } from "zod";
-import { chatTypeEnum } from "../../db/chatSchema";
-
-const createSchema = z.object({
-  user_ids: z.array(z.coerce.number()),
-  name: z.string().optional(),
-  type: z.enum(chatTypeEnum.enumValues),
-});
+import { openApiResponseWrapper } from "@/core/http/openApiResponseWrapper";
+import { createNewChatSchema, GetChatMessagesSchema } from "./chat.schemas";
 
 const pinSchema = z.object({
   chat_id: z.coerce.number(),
   pinned_by: z.number(),
   pinned: z.boolean(),
 });
-
-const chatMessagesQuerySchema = z
-  .object({
-    user_id: z.coerce.number().int().positive(),
-    chat_id: z.coerce.number().int().positive(),
-    limit: z.coerce.number().int().min(1).max(50).default(20),
-    before_id: z.coerce.number().int().positive().optional(),
-    after_id: z.coerce.number().int().positive().optional(),
-    around_id: z.coerce.number().optional(),
-  })
-  .refine(
-    (v) => [v.before_id, v.after_id, v.around_id].filter(Boolean).length <= 1,
-    {
-      message: "Use only one of before_id, after_id or around_id",
-    }
-  );
-
-export type ChatMessagesParam = z.infer<typeof chatMessagesQuerySchema>;
 
 export type PinType = z.infer<typeof pinSchema>;
 
@@ -41,38 +18,36 @@ export class ChatController extends BaseController {
     super("ChatService");
   }
 
-  createChat = responseWrapper({
+  createChat = openApiResponseWrapper({
     action: "create_chat",
     builder: this.builder,
-    errorMsg: "",
-    successMsg: "",
+    successMsg: "Chat Room Created Successfully",
     handler: async (ctx) => {
       const user = ctx.get("user");
       if (!user) {
         throw new Error("User not exist");
       }
 
-      const { data } = await ctx.req.json();
+      const body = await ctx.req.json();
 
-      const parseData = createSchema.safeParse(data);
+      const parseData = createNewChatSchema.safeParse(body);
       if (!parseData.success) {
         throw parseData.error;
       }
 
       return await this.deps.chatServices.createChat({
         creator_id: user.id,
-        member_ids: parseData.data.user_ids,
-        type: parseData.data.type,
-        name: parseData.data.name,
+        member_ids: parseData.data.data.user_ids,
+        type: parseData.data.data.type,
+        name: parseData.data.data.name,
       });
     },
   });
 
-  getChats = responseWrapper({
+  getChats = openApiResponseWrapper({
     action: "get_all_chats",
     builder: this.builder,
-    successMsg: "Successfull",
-    errorMsg: "Error geting chats",
+    successMsg: "Chat list fetched successfully",
     handler: async (ctx) => {
       const user = ctx.get("user");
       if (!user) {
@@ -92,10 +67,9 @@ export class ChatController extends BaseController {
     },
   });
 
-  getConversationContact = responseWrapper({
+  getConversationContact = openApiResponseWrapper({
     action: "conversation_contact",
     builder: this.builder,
-    errorMsg: "Error get conversation contact",
     successMsg: "Successfully get conversation contact",
     handler: async (ctx) => {
       const user = ctx.get("user");
@@ -107,10 +81,9 @@ export class ChatController extends BaseController {
       });
     },
   });
-  sendMessage = responseWrapper({
+  sendMessage = openApiResponseWrapper({
     action: "send_message",
     builder: this.builder,
-    errorMsg: "Error sending message",
     successMsg: "Message sent Successfully",
     handler: async (ctx) => {
       const user = ctx.get("user");
@@ -148,10 +121,9 @@ export class ChatController extends BaseController {
     },
   });
 
-  getChatMessages = responseWrapper({
+  getChatMessages = openApiResponseWrapper({
     action: "get_chat_id_messages",
     builder: this.builder,
-    errorMsg: "Not able to get messages",
     successMsg: "Messages Get Successfully",
     handler: async (ctx) => {
       const user = ctx.get("user");
@@ -161,7 +133,7 @@ export class ChatController extends BaseController {
       }
       const query = ctx.req.query();
 
-      const payload = chatMessagesQuerySchema.safeParse({
+      const payload = GetChatMessagesSchema.safeParse({
         chat_id,
         user_id: user.id,
         ...query,
@@ -177,10 +149,9 @@ export class ChatController extends BaseController {
     },
   });
 
-  markAsReadMsg = responseWrapper({
+  markAsReadMsg = openApiResponseWrapper({
     action: "mark_as_read_all_chat_messages",
     builder: this.builder,
-    errorMsg: "Not able to read the msg",
     successMsg: "Success change status to read",
     handler: async (ctx) => {
       const user = ctx.get("user");
@@ -202,11 +173,10 @@ export class ChatController extends BaseController {
     },
   });
 
-  deleteMessages = responseWrapper({
+  deleteMessages = openApiResponseWrapper({
     action: "delete_user_messages",
     builder: this.builder,
     successMsg: "Message Deleted Successfully",
-    errorMsg: "Error Deleting Messages",
     handler: async (ctx) => {
       const user = ctx.get("user");
       if (!user) {
@@ -226,27 +196,23 @@ export class ChatController extends BaseController {
     },
   });
 
-  getSingleChatList = responseWrapper({
+  getSingleChatList = openApiResponseWrapper({
     action: "single_chat_list",
     builder: this.builder,
     successMsg: "Single Chat List Fetched Successfully",
-    errorMsg: "Not able to get list",
     handler: async (ctx) => {
       const { chat_id } = ctx.req.param();
       const schema = z.coerce.number().safeParse(chat_id);
-
       if (!schema.success) {
         throw schema.error;
       }
-
       return this.deps.chatServices.getSingleChatList({ chat_id: schema.data });
     },
   });
 
-  pinUnpinChat = responseWrapper({
+  pinUnpinChat = openApiResponseWrapper({
     action: "pin/unpin chat",
     successMsg: "Pin/Unpin Successfully",
-    errorMsg: "Error pin/unpin chat",
     builder: this.builder,
     handler: async (ctx) => {
       const user = ctx.get("user");
@@ -266,9 +232,8 @@ export class ChatController extends BaseController {
     },
   });
 
-  scheduleMessages = responseWrapper({
+  scheduleMessages = openApiResponseWrapper({
     action: "schedule message",
-    errorMsg: "Something went wrong while schedule message",
     successMsg: "Successfully Schedule Message",
     builder: this.builder,
     handler: async (ctx) => {
@@ -307,9 +272,8 @@ export class ChatController extends BaseController {
     },
   });
 
-  getScheduleMessage = responseWrapper({
+  getScheduleMessage = openApiResponseWrapper({
     action: "get schedule messages",
-    errorMsg: "Something went wrong while getting schedule messages",
     successMsg: "Successfully get schedule messages",
     builder: this.builder,
     handler: async (ctx) => {
@@ -335,10 +299,9 @@ export class ChatController extends BaseController {
     },
   });
 
-  deleteScheduleMessage = responseWrapper({
+  deleteScheduleMessage = openApiResponseWrapper({
     action: "delete_schedule_message",
     successMsg: "Deleted Successfully",
-    errorMsg: "Something went wrong while deleting schedule message",
     builder: this.builder,
     handler: async (ctx) => {
       const user = ctx.get("user");
@@ -363,10 +326,9 @@ export class ChatController extends BaseController {
     },
   });
 
-  updateScheduleMessages = responseWrapper({
+  updateScheduleMessages = openApiResponseWrapper({
     action: "update_schedule_message",
     successMsg: "Updated Successfully",
-    errorMsg: "Something went wrong while updating schedule message",
     builder: this.builder,
     handler: async (ctx) => {
       const user = ctx.get("user");
@@ -398,10 +360,9 @@ export class ChatController extends BaseController {
     },
   });
 
-  checkMessageStatus = responseWrapper({
+  checkMessageStatus = openApiResponseWrapper({
     action: "check_messages_status",
     builder: this.builder,
-    errorMsg: "Something went wrong while getting messages status",
     successMsg: "Successfully get messages status",
     handler: async (ctx) => {
       const user = ctx.get("user");
@@ -429,10 +390,9 @@ export class ChatController extends BaseController {
     },
   });
 
-  messagesSearch = responseWrapper({
+  messagesSearch = openApiResponseWrapper({
     action: "search_messages",
     builder: this.builder,
-    errorMsg: "Something went wrong while searching messages",
     successMsg: "Successfully found messages",
     handler: async (ctx) => {
       const user = ctx.get("user");

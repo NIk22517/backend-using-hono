@@ -33,10 +33,10 @@ export class ResponseBuilder {
     return {
       service: this.service,
       action,
-      status: "success" as const,
+      status: "success",
       message,
       data,
-    } as const;
+    };
   }
 
   failure<E = unknown>({
@@ -51,9 +51,9 @@ export class ResponseBuilder {
     return {
       service: this.service,
       action,
-      status: "error" as const,
+      status: "error",
       message,
-      error: error,
-    } as const;
+      error,
+    };
   }
 }

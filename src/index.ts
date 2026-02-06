@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { OpenAPIHono } from "@hono/zod-openapi";
 import { serve } from "@hono/node-server";
 import { authRoutes } from "@/features/auth";
 import { userRouter } from "@/features/user";
@@ -8,13 +8,17 @@ import { cors } from "hono/cors";
 import { aiRouter } from "./features/ai";
 import { startMessageScheduler } from "./core/schedule/MessageSchedule";
 import { callRouter } from "./features/call";
+import { swaggerUI } from "@hono/swagger-ui";
+import { Scalar } from "@scalar/hono-api-reference";
 
 const port = parseInt(process.env.PORT ?? "8080", 10);
 
-const app = new Hono().use(
+const app = new OpenAPIHono();
+
+app.use(
   cors({
     origin: ["http://localhost:3001"],
-  })
+  }),
 );
 
 app.route("/", authRoutes);
@@ -23,6 +27,43 @@ app.route("/", chatRouter);
 app.route("/", aiRouter);
 app.route("/", callRouter);
 
+// OpenAPI documentation endpoint
+app.doc("/doc", {
+  openapi: "3.0.0",
+  info: {
+    version: "1.0.0",
+    title: "API Documentation",
+    description:
+      "Complete API documentation with authentication, chat, and AI features",
+  },
+  servers: [
+    {
+      url: `http://localhost:${port}`,
+      description: "Development server",
+    },
+  ],
+  tags: [
+    { name: "Authentication", description: "User authentication endpoints" },
+    { name: "Users", description: "User management endpoints" },
+    { name: "Chat", description: "Chat and messaging endpoints" },
+    { name: "AI", description: "AI-powered features" },
+    { name: "Calls", description: "Voice/video call endpoints" },
+  ],
+});
+
+// Swagger UI endpoint
+app.get("/ui", swaggerUI({ url: "/doc" }));
+
+// Scalar API Reference (modern alternative to Swagger UI)
+app.get(
+  "/reference",
+  Scalar({
+    spec: {
+      url: "/doc",
+    },
+  }),
+);
+
 const server = serve(
   {
     fetch: app.fetch,
@@ -30,7 +71,9 @@ const server = serve(
   },
   (info) => {
     console.log(`Server listening on http://localhost:${info.port}`);
-  }
+    console.log(`API Documentation: http://localhost:${info.port}/ui`);
+    console.log(`API Reference: http://localhost:${info.port}/reference`);
+  },
 );
 
 startMessageScheduler();

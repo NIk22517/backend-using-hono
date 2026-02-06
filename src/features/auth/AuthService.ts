@@ -1,4 +1,5 @@
 import { Services } from "@/core/di/types";
+import { AppError } from "@/core/errors";
 import { JWT_SECRET } from "@/core/utils/EnvValidator";
 import { db } from "@/db";
 import { usersTable } from "@/db/schema";
@@ -16,7 +17,7 @@ export class AuthService {
       email: string;
       password: string;
     },
-    services: Services
+    services: Services,
   ) {
     const check = await services.userServices.checkUserExist({
       key: "email",
@@ -24,7 +25,7 @@ export class AuthService {
     });
 
     if (check) {
-      throw new Error("User Already Exist");
+      throw AppError.conflict("User already exists");
     }
     const hashedPassword = await hash(password, 10);
 
@@ -42,13 +43,14 @@ export class AuthService {
     const { password: p, ...rest } = data;
     return {
       ...rest,
+      created_at: rest.created_at?.toISOString() ?? null,
       token,
     };
   }
 
   async logIn(
     { email, password }: { email: string; password: string },
-    services: Services
+    services: Services,
   ) {
     const check = await services.userServices.checkUserExist({
       key: "email",
@@ -72,6 +74,7 @@ export class AuthService {
 
     return {
       ...rest,
+      created_at: rest.created_at?.toISOString() ?? null,
       token,
     };
   }

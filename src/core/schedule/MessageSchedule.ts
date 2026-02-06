@@ -28,8 +28,8 @@ export const startMessageScheduler = async () => {
       .where(
         and(
           lte(chatScheduleMessages.scheduled_at, now),
-          eq(chatScheduleMessages.status, "pending")
-        )
+          eq(chatScheduleMessages.status, "pending"),
+        ),
       );
 
     for (const item of scheduled) {
@@ -38,7 +38,7 @@ export const startMessageScheduler = async () => {
     }
 
     console.log(
-      `✅ Bootstrapped ${scheduled.length} scheduled messages into dateSet.`
+      `✅ Bootstrapped ${scheduled.length} scheduled messages into dateSet.`,
     );
   } catch (err) {
     console.error("❌ Failed to bootstrap scheduler:", err);
@@ -69,8 +69,8 @@ const processDueMessages = async () => {
         .where(
           and(
             lte(chatScheduleMessages.scheduled_at, now),
-            eq(chatScheduleMessages.status, "pending")
-          )
+            eq(chatScheduleMessages.status, "pending"),
+          ),
         );
 
       if (!dueMessages.length) {
@@ -88,8 +88,8 @@ const processDueMessages = async () => {
           .where(
             and(
               eq(chatScheduleMessages.id, msg.id),
-              eq(chatScheduleMessages.status, "pending")
-            )
+              eq(chatScheduleMessages.status, "pending"),
+            ),
           )
           .returning();
 
@@ -115,6 +115,7 @@ const processDueMessages = async () => {
               status: "completed",
               completed_at: new Date(),
               error_message: null,
+              active: false,
             })
             .where(eq(chatScheduleMessages.id, msg.id));
 
@@ -132,7 +133,7 @@ const processDueMessages = async () => {
           const nextRetry = failed
             ? msg.scheduled_at
             : new Date(
-                now.getTime() + RETRY_DELAY_MS * Math.pow(2, retries - 1)
+                now.getTime() + RETRY_DELAY_MS * Math.pow(2, retries - 1),
               );
 
           await tx
@@ -146,7 +147,7 @@ const processDueMessages = async () => {
             .where(eq(chatScheduleMessages.id, msg.id));
 
           console.error(
-            `[${failed ? "Fail" : "Retry"}] Message ${msg.id}: ${err?.message}`
+            `[${failed ? "Fail" : "Retry"}] Message ${msg.id}: ${err?.message}`,
           );
         }
       }

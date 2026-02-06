@@ -4,14 +4,11 @@ import { z } from "zod";
 import { BaseController } from "@/core/http/BaseController";
 import type { Services } from "@/core/di/types";
 import { responseWrapper } from "@/core/http/responseWrapper";
+import { SignInRequestSchema } from "./auth.schemas";
+import { openApiResponseWrapper } from "@/core/http/openApiResponseWrapper";
+import { AppError } from "@/core/errors";
 
 const logInSchema = z.object({
-  email: z.string().email({ message: "Provide a valid email" }),
-  password: z.string().min(6).max(16),
-});
-
-const signInSchema = z.object({
-  name: z.string().min(3).max(50),
   email: z.string().email({ message: "Provide a valid email" }),
   password: z.string().min(6).max(16),
 });
@@ -21,35 +18,29 @@ export class AuthController extends BaseController {
     super("AuthService");
   }
 
-  signIn = responseWrapper({
+  signIn = openApiResponseWrapper({
     action: "auth_sign_in",
     builder: this.builder,
     successMsg: "User Created Successfully",
-    errorMsg: "Not able to create new user",
     handler: async (ctx: Context) => {
-      const body = await ctx.req?.json();
-      const raw = body?.data;
-
-      if (!raw) {
-        ctx.status(400);
-        throw new Error("Please provide the data");
+      const body = await ctx.req.json();
+      if (!body?.data) {
+        throw AppError.badRequest("Missing request body");
       }
 
-      const parsed = signInSchema.safeParse(raw);
+      const parsed = SignInRequestSchema.safeParse(body);
 
       if (!parsed.success) {
-        ctx.status(400);
-        throw parsed.error;
+        throw AppError.validation("Invalid input", parsed.error);
       }
 
-      return this.deps.authService.signIn(parsed.data, this.deps);
+      return this.deps.authService.signIn(parsed.data.data, this.deps);
     },
   });
 
-  logIn = responseWrapper({
+  logIn = openApiResponseWrapper({
     action: "auth_log_in",
     builder: this.builder,
-    errorMsg: "Can not find user with this email",
     successMsg: "Log in Successfully",
     handler: async (ctx) => {
       const { data } = await ctx.req.json();

@@ -1,4 +1,6 @@
+import { HttpStatus } from "@/core/errors";
 import { JWT_SECRET } from "@/core/utils/EnvValidator";
+import { ResponseBuilder } from "@/core/utils/ResponseBuilder";
 import { MiddlewareHandler } from "hono";
 import {
   verify,
@@ -9,15 +11,23 @@ import {
 
 export const authMiddleware: MiddlewareHandler = async (c, next) => {
   const authHeader = c.req.header("Authorization");
+  const fail = (message: string, status: HttpStatus) => {
+    const res = new ResponseBuilder("middleware").failure({
+      action: "auth_middleware",
+      error: message,
+      message,
+    });
+    return c.json(res, status);
+  };
   if (!authHeader) {
-    return c.json({ message: "Missing or malformed token" }, 401);
+    return fail("Missing or malformed token", 401);
   }
 
   try {
     const decoded = verify(authHeader, JWT_SECRET);
 
     if (typeof decoded !== "object" || !("id" in decoded)) {
-      return c.json({ message: "Invalid token payload" }, 401);
+      return fail("Invalid token payload", 401);
     }
 
     const payload = decoded as JwtPayload & {
@@ -38,13 +48,13 @@ export const authMiddleware: MiddlewareHandler = async (c, next) => {
     await next();
   } catch (err) {
     if (err instanceof TokenExpiredError) {
-      return c.json({ message: "Token has expired" }, 401);
+      return fail("Token has expired", 401);
     }
     if (err instanceof JsonWebTokenError) {
-      return c.json({ message: "Invalid token" }, 401);
+      return fail("Invalid token", 401);
     }
 
     console.error("Unexpected JWT error:", err);
-    return c.json({ message: "Authentication error" }, 500);
+    return fail("Authentication error", 500);
   }
 };

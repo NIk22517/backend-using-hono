@@ -441,9 +441,15 @@ export const UserAuthSchema = z.object({
   user_id: z.number().int().positive(),
 });
 
+export const ChatTypeSchema = z.object({
+  chat_type: z.enum(chatTypeEnum.enumValues),
+});
+
 export const GetChatMessagesSchema = ChatMessagesParamsSchema.and(
   ChatMessagesQuerySchema,
-).and(UserAuthSchema);
+)
+  .and(UserAuthSchema)
+  .and(ChatTypeSchema);
 
 /**
  * Complete chat message schema with all fields
@@ -486,7 +492,11 @@ export const ChatMessageSchema = ChatMessageSelectSchema.extend({
   seen_all: z.boolean().openapi({
     description: "True if every participant in the chat has read the message",
   }),
-}).omit({ search_vector: true });
+}).omit({
+  search_vector: true,
+  updated_at: true,
+  parent_message_id: true,
+});
 
 /**
  * Pagination info schema

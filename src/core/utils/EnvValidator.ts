@@ -10,6 +10,8 @@ const envSchema = z.object({
   CLOUDINARY_API_KEY: z.string(),
   CLOUDINARY_API_SECRET: z.string(),
   OLLAMA_URL: z.string().startsWith("http"),
+  REDIS_PASSWORD: z.string().min(6),
+  REDIS_URL: z.string().startsWith("redis"),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -26,4 +28,6 @@ export const {
   CLOUDINARY_CLOUD_NAME,
   DATABASE_URL,
   JWT_SECRET,
+  REDIS_PASSWORD,
+  REDIS_URL,
 } = parsedEnv.data;

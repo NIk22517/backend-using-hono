@@ -10,6 +10,7 @@ import { startMessageScheduler } from "./core/schedule/MessageSchedule";
 import { callRouter } from "./features/call";
 import { swaggerUI } from "@hono/swagger-ui";
 import { Scalar } from "@scalar/hono-api-reference";
+import { redisClient } from "./config/redis.client";
 
 const port = parseInt(process.env.PORT ?? "8080", 10);
 
@@ -64,18 +65,41 @@ app.get(
   }),
 );
 
-const server = serve(
-  {
-    fetch: app.fetch,
-    port: port,
-  },
-  (info) => {
-    console.log(`Server listening on http://localhost:${info.port}`);
-    console.log(`API Documentation: http://localhost:${info.port}/ui`);
-    console.log(`API Reference: http://localhost:${info.port}/reference`);
-  },
-);
+export let socketService: SocketService;
 
-startMessageScheduler();
+export const initialize = async () => {
+  try {
+    console.log("Starting application...");
+    if (!redisClient.getClient().isOpen) {
+      await redisClient.connect();
+      console.log("[Redis] Connected");
+    }
 
-export const socketService = new SocketService(server);
+    const server = serve(
+      {
+        fetch: app.fetch,
+        port: port,
+      },
+      (info) => {
+        console.log(`Server listening on http://localhost:${info.port}`);
+        console.log(`API Documentation: http://localhost:${info.port}/ui`);
+        console.log(`API Reference: http://localhost:${info.port}/reference`);
+      },
+    );
+
+    startMessageScheduler();
+    socketService = new SocketService(server);
+    console.log("Application started successfully 🚀");
+  } catch (error) {
+    console.error("Startup failed:", error);
+    process.exit(1);
+  }
+};
+
+initialize();
+
+process.on("SIGINT", async () => {
+  console.log("Shutting down...");
+  await redisClient.disconnect();
+  process.exit(0);
+});

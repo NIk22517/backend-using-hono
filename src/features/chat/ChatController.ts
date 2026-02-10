@@ -4,6 +4,7 @@ import { Services } from "@/core/di/types";
 import { BaseController } from "@/core/http/BaseController";
 import { openApiResponseWrapper } from "@/core/http/openApiResponseWrapper";
 import { createNewChatSchema, GetChatMessagesSchema } from "./chat.schemas";
+import { AppError } from "@/core/errors";
 
 const pinSchema = z.object({
   chat_id: z.coerce.number(),
@@ -129,13 +130,17 @@ export class ChatController extends BaseController {
       const user = ctx.get("user");
       const { chat_id } = ctx.req.param();
       if (!chat_id) {
-        throw new Error("Chat id is required");
+        throw AppError.notFound("Chat id is required");
+      }
+      const chat_info = ctx.get("chat_info");
+      if (!chat_info) {
+        throw AppError.notFound("Chat Not Found");
       }
       const query = ctx.req.query();
-
       const payload = GetChatMessagesSchema.safeParse({
         chat_id,
         user_id: user.id,
+        chat_type: chat_info.chat_type,
         ...query,
       });
 
@@ -367,7 +372,11 @@ export class ChatController extends BaseController {
     handler: async (ctx) => {
       const user = ctx.get("user");
       if (!user) {
-        throw new Error("User Not Found");
+        throw AppError.notFound("User Not Found");
+      }
+      const chat_info = ctx.get("chat_info");
+      if (!chat_info) {
+        throw AppError.notFound("Chat Not found");
       }
       const { chat_id, message_id } = ctx.req.param();
       const schema = z
@@ -386,6 +395,7 @@ export class ChatController extends BaseController {
       return this.deps.chatServices.checkStatus({
         ...schema.data,
         user_id: user.id,
+        chat_type: chat_info.chat_type,
       });
     },
   });

@@ -10,10 +10,11 @@ services:
       - /app/node_modules
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/chatdatabase
-      - OLLAMA_URL=http://ollama:11434
+      - REDIS_URL=redis://default:${REDIS_PASSWORD}@redis:6379
+      # - OLLAMA_URL=http://ollama:11434
     depends_on:
       - db
-      - ollama
+      # - ollama
     command: sh -c "until nc -z db 5432; do sleep 1; done && pnpm run dev"
     develop:
       watch:
@@ -35,14 +36,42 @@ services:
       POSTGRES_PASSWORD: password
     volumes:
       - chat_db_data:/var/lib/postgresql/data
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
+  redis:
+    image: redis:7-alpine
     restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_chat_data:/data
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "PING"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    restart: unless-stopped
+    ports:
+      - "5540:5540"
+    depends_on:
+      - redis
+
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   restart: unless-stopped
 
 volumes:
   chat_db_data:
-  ollama_data:
+  redis_chat_data:
+  # ollama_data:

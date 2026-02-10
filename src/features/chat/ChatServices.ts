@@ -223,7 +223,9 @@ export class ChatServices {
     const chatIdsResults = await db
       .select({ chat_id: chatMembers.chat_id })
       .from(chatMembers)
-      .where(eq(chatMembers.user_id, id));
+      .where(eq(chatMembers.user_id, id))
+      .limit(limit)
+      .offset(offset);
 
     const chatIds = chatIdsResults.map((row) => row.chat_id);
 
@@ -451,14 +453,6 @@ export class ChatServices {
       .from(chats)
       .where(eq(chats.id, Number(data.chat_id)));
     if (!checkType) throw new Error("Chat not found");
-    const memberValidate = await db.query.chatMembers.findFirst({
-      where: (cm, { and, eq }) =>
-        and(eq(cm.chat_id, checkType.id), eq(cm.user_id, data.sender_id)),
-    });
-
-    if (!memberValidate) {
-      throw AppError.badRequest("User is not a member of this chat");
-    }
 
     const message = await this.insertSingleMessage({ ...data });
     if (checkType.chat_type === "broadcast") {
@@ -499,30 +493,24 @@ export class ChatServices {
     before_id,
     around_id,
     equal_id,
+    chat_type,
   }: InternalChatMessageRequest & {
     equal_id?: number;
   }): Promise<ChatMessagesResponse> {
-    const [chat] = await db
-      .select({ chat_type: chats.chat_type, created_by: chats.created_by })
-      .from(chats)
-      .where(eq(chats.id, chat_id))
-      .limit(1);
-    if (!chat) {
-      throw new Error("Chat not found");
-    }
-
     if (around_id) {
       const target = await this.getChatMessages({
         chat_id,
         limit: 1,
         user_id,
         equal_id: around_id,
+        chat_type,
       });
       const older = await this.getChatMessages({
         chat_id,
         user_id,
         limit: Math.floor(limit / 2),
         before_id: around_id,
+        chat_type,
       });
 
       const newer = await this.getChatMessages({
@@ -530,6 +518,7 @@ export class ChatServices {
         user_id,
         limit: Math.ceil(limit / 2),
         after_id: around_id,
+        chat_type,
       });
 
       const combined = [...newer.data, ...target.data, ...older.data];
@@ -695,7 +684,7 @@ export class ChatServices {
     }
 
     const recipients =
-      chat.chat_type === "broadcast"
+      chat_type === "broadcast"
         ? await db
             .select({
               user_id: broadcastRecipients.recipient_id,
@@ -760,7 +749,7 @@ export class ChatServices {
     const messageIds = normalizedMessages.map((m) => m.id);
     const readMap = new Map<number, Set<number>>();
 
-    if (chat.chat_type !== "broadcast") {
+    if (chat_type !== "broadcast") {
       const rows = await db
         .select({
           message_id: chatMessageReadReceipts.message_id,
@@ -1439,19 +1428,14 @@ export class ChatServices {
     chat_id,
     user_id,
     message_id,
+    chat_type,
   }: {
     chat_id: number;
     user_id: number;
     message_id: number;
+    chat_type: ChatTypeEnum;
   }) {
-    const [foundChat] = await db
-      .select()
-      .from(chats)
-      .where(eq(chats.id, chat_id));
-
-    if (!foundChat) throw new Error("No chat found");
-
-    if (foundChat.chat_type === "broadcast") {
+    if (chat_type === "broadcast") {
       const childMessages = await db
         .select({ id: chatMessages.id })
         .from(chatMessages)
@@ -1567,13 +1551,6 @@ export class ChatServices {
     limit?: number;
     cursor?: string;
   }) {
-    const [chat] = await db
-      .select({ chat_type: chats.chat_type })
-      .from(chats)
-      .where(eq(chats.id, chat_id));
-    if (!chat) {
-      throw new Error("Chat not found");
-    }
     const tsQuery = sql`
         websearch_to_tsquery('english', ${search_text})
     `;

@@ -123,6 +123,33 @@ export class ScheduledMessageQueue extends BaseQueueManager<
     console.log(`[ScheduledMessage] Cancelled ${scheduleId}`);
   }
 
+  async updateSchedule(data: ScheduledMessageJobData & { scheduledAt: Date }) {
+    const jobId = `schedule-${data.scheduleId}`;
+    const job = await this.getJob(jobId);
+
+    if (job) {
+      const state = await job.getState();
+      if (state === "waiting" || state === "delayed") {
+        await job.remove();
+        console.log(`[ScheduledMessage] Removed old job ${jobId}`);
+      } else {
+        console.warn(
+          `[ScheduledMessage] Cannot update ${jobId} - already ${state}`,
+        );
+        return;
+      }
+    }
+    await this.scheduleMessage(
+      {
+        scheduleId: data.scheduleId,
+        chatId: data.scheduleId,
+        senderId: data.senderId,
+        message: data.message || "",
+      },
+      data.scheduledAt,
+    );
+  }
+
   async bootstrap(): Promise<void> {
     console.log("[ScheduledMessage] Bootstrapping from database...");
 

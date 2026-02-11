@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { eq, sql } from "drizzle-orm";
 import { AppEvents } from "../eventTypes";
 import { socketService } from "@/index";
+import { redisCache } from "@/core/cache/redis.cache";
 
 export const messageSentHandler = async ({
   message,
@@ -16,10 +17,8 @@ export const messageSentHandler = async ({
   const chat_id = message.chat_id;
   if (!chat_id) return;
 
-  const members = await db
-    .select({ user_id: chatMembers.user_id })
-    .from(chatMembers)
-    .where(eq(chatMembers.chat_id, chat_id));
+  const chat_info = await redisCache.getOrSetMapChat(chat_id);
+  const members = chat_info ? [...chat_info.members] : [];
 
   await db
     .insert(chatMessageReadReceipts)
@@ -35,10 +34,10 @@ export const messageSentHandler = async ({
     .values(
       members.map((m) => ({
         chat_id,
-        user_id: m.user_id,
-        unread_count: m.user_id === sender_id ? 0 : 1,
-        last_read_message_id: m.user_id === sender_id ? message.id : null,
-      }))
+        user_id: m,
+        unread_count: m === sender_id ? 0 : 1,
+        last_read_message_id: m === sender_id ? message.id : null,
+      })),
     )
     .onConflictDoUpdate({
       target: [chatReadSummary.chat_id, chatReadSummary.user_id],
@@ -63,14 +62,14 @@ export const messageSentHandler = async ({
 
   members.forEach((member) => {
     socketService.sendToUser({
-      userId: member.user_id,
+      userId: member,
       event: "sendMessage",
       args: [message],
     });
 
-    if (member.user_id !== sender_id) {
+    if (member !== sender_id) {
       socketService.sendToUser({
-        userId: member.user_id,
+        userId: member,
         event: "markReadMessage",
         args: [{ chat_id, seen_by: sender_id }],
       });

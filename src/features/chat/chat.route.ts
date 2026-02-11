@@ -273,7 +273,7 @@ const updateSchedule = createRoute({
     }),
   }),
   responses: createSuccessResponse({
-    schema: ScheduleMessagesSuccessSchema,
+    schema: ChatScheduleMessagesSuccessSchema,
     description: "Schedule Updated Successfully",
   }),
 });

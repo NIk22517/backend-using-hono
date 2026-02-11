@@ -131,6 +131,24 @@ export abstract class BaseQueueManager<TData = any, TResult = any> {
     }
   }
 
+  async updateJob({
+    jobId,
+    newData,
+  }: {
+    jobId: string;
+    newData: Partial<TData>;
+  }): Promise<void> {
+    const job = await this.getJob(jobId);
+    if (job) {
+      await job.updateData({
+        ...job.data,
+        ...newData,
+      } as TData);
+    } else {
+      console.log("job not found");
+    }
+  }
+
   /**
    * Get queue statistics
    */

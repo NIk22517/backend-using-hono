@@ -1423,7 +1423,7 @@ export class ChatServices {
       throw new Error("No fields to update");
     }
 
-    const result = await db
+    const [result] = await db
       .update(chatScheduleMessages)
       .set(updateFields)
       .where(
@@ -1434,6 +1434,14 @@ export class ChatServices {
         ),
       )
       .returning();
+
+    scheduledMessageQueue.updateSchedule({
+      chatId: result.chat_id,
+      message: result.message ?? "",
+      scheduledAt: result.scheduled_at,
+      scheduleId: result.id,
+      senderId: result.sender_id,
+    });
 
     return result;
   }

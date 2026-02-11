@@ -79,7 +79,7 @@ export class ScheduledMessageQueue extends BaseQueueManager<
         sentAt: new Date(),
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
       const isFinalAttempt = attemptNumber >= (job.opts.attempts ?? 3);
 
@@ -87,7 +87,7 @@ export class ScheduledMessageQueue extends BaseQueueManager<
         .update(chatScheduleMessages)
         .set({
           status: isFinalAttempt ? "failed" : "pending",
-          error_message: message,
+          error_message: errorMessage,
           retry_count: attemptNumber,
           last_attempt_at: new Date(),
         })

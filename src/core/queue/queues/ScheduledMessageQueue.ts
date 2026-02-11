@@ -142,7 +142,7 @@ export class ScheduledMessageQueue extends BaseQueueManager<
     await this.scheduleMessage(
       {
         scheduleId: data.scheduleId,
-        chatId: data.scheduleId,
+        chatId: data.chatId,
         senderId: data.senderId,
         message: data.message || "",
       },

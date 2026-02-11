@@ -118,6 +118,19 @@ export abstract class BaseQueueManager<TData = any, TResult = any> {
     console.log(`[${this.queueName}] 🔄 Processing job ${job.id}`);
   }
 
+  async getJob(jobId: string) {
+    return await this.queue.getJob(jobId);
+  }
+
+  async removeJob(jobId: string) {
+    const job = await this.getJob(jobId);
+    if (job) {
+      await job.remove();
+    } else {
+      console.log("job not found");
+    }
+  }
+
   /**
    * Get queue statistics
    */

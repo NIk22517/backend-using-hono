@@ -117,6 +117,12 @@ export class ScheduledMessageQueue extends BaseQueueManager<
     );
   }
 
+  async removeSchedule(scheduleId: number) {
+    const jobId = `schedule-${scheduleId}`;
+    await this.removeJob(jobId);
+    console.log(`[ScheduledMessage] Cancelled ${scheduleId}`);
+  }
+
   async bootstrap(): Promise<void> {
     console.log("[ScheduledMessage] Bootstrapping from database...");
 

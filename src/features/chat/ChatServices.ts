@@ -1333,7 +1333,7 @@ export class ChatServices {
       })
       .returning();
 
-    await scheduledMessageQueue.scheduleMessage(
+    scheduledMessageQueue.scheduleMessage(
       {
         chatId: result.chat_id,
         message: result.message ?? "",
@@ -1394,7 +1394,7 @@ export class ChatServices {
         ),
       )
       .returning();
-    await scheduledMessageQueue.removeSchedule(schedule_id);
+    scheduledMessageQueue.removeSchedule(schedule_id);
     return result;
   }
 

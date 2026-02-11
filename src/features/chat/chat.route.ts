@@ -35,6 +35,7 @@ import {
   createJsonRequest,
   createMultipartRequest,
 } from "../../core/utils/createRouteUtils";
+import { chatMiddleware } from "@/middleware/chatMiddleware";
 
 const controller = new ChatController(services);
 const chatRouter = new OpenAPIHono({
@@ -76,6 +77,7 @@ const chatSingleListRoute = createRoute({
   path: "/list/{chat_id}",
   tags: ["Chat"],
   description: "Get chat list",
+  middleware: [chatMiddleware()] as const,
   request: createAuthenticatedRequest({
     params: chatIdParamSchema,
   }),
@@ -128,6 +130,11 @@ const pinUnpinChatRoute = createRoute({
   path: "/pin",
   tags: ["Chat"],
   description: "Pin/Unpin chat room",
+  middleware: [
+    chatMiddleware({
+      source: "body",
+    }),
+  ] as const,
   request: createAuthenticatedRequest({
     body: createJsonRequest({
       schema: PinUnpinPayload,
@@ -146,6 +153,12 @@ const chatSendMsgRoute = createRoute({
   method: "post",
   path: "/send-message",
   tags: ["Chat"],
+  middleware: [
+    chatMiddleware({
+      source: "form_data",
+      broadcastCreatorOnly: true,
+    }),
+  ] as const,
   description: "Send Chat Messages",
   request: createAuthenticatedRequest({
     body: createMultipartRequest({
@@ -177,6 +190,7 @@ const chatMessagesRoute = createRoute({
   path: "/messages/{chat_id}",
   tags: ["Chat"],
   description: "Get All Chat Messages",
+  middleware: [chatMiddleware()] as const,
   request: createAuthenticatedRequest({
     params: ChatMessagesParamsSchema,
     query: ChatMessagesQuerySchema,
@@ -194,6 +208,11 @@ const chatScheduleMessage = createRoute({
   path: "/messages/schedule",
   tags: ["Chat"],
   description: "Chat Messages Schedule",
+  middleware: [
+    chatMiddleware({
+      source: "form_data",
+    }),
+  ] as const,
   request: createAuthenticatedRequest({
     body: createMultipartRequest({
       schema: scheduleSchema,
@@ -212,6 +231,7 @@ const getScheduleMessage = createRoute({
   path: "/schedule/{chat_id}",
   tags: ["Chat"],
   description: "Get All Schedule Messages",
+  middleware: [chatMiddleware()] as const,
   request: createAuthenticatedRequest({
     params: chatIdParamSchema,
   }),
@@ -253,7 +273,7 @@ const updateSchedule = createRoute({
     }),
   }),
   responses: createSuccessResponse({
-    schema: ScheduleMessagesSuccessSchema,
+    schema: ChatScheduleMessagesSuccessSchema,
     description: "Schedule Updated Successfully",
   }),
 });
@@ -265,6 +285,7 @@ const chatMarkAsReadMessage = createRoute({
   path: "/read/{chat_id}",
   tags: ["Chat"],
   description: "Mark Chat as read",
+  middleware: [chatMiddleware()] as const,
   request: createAuthenticatedRequest({
     params: chatIdParamSchema,
   }),
@@ -281,6 +302,11 @@ const chatDeleteMessageRoute = createRoute({
   path: "/messages/delete",
   tags: ["Chat"],
   description: "Delete Chat Messages or clear chat",
+  middleware: [
+    chatMiddleware({
+      source: "body",
+    }),
+  ] as const,
   request: createAuthenticatedRequest({
     body: createJsonRequest({
       schema: DeleteMessageSchema,
@@ -299,6 +325,7 @@ const chatMessageStatusRoute = createRoute({
   path: "/read-status/{chat_id}/{message_id}",
   tags: ["Chat"],
   description: "Get Message Status who have read it or who have received it",
+  middleware: [chatMiddleware()] as const,
   request: createAuthenticatedRequest({
     params: chatIdParamSchema.extend({
       message_id: z.coerce.number().openapi({
@@ -321,6 +348,7 @@ const chatSearchMessageRoute = createRoute({
   path: "/messages-search/{chat_id}",
   tags: ["Chat"],
   description: "Search Messages with keywords",
+  middleware: [chatMiddleware()] as const,
   request: createAuthenticatedRequest({
     params: chatIdParamSchema,
     query: z.object({

@@ -2,7 +2,7 @@ import { db } from "@/db";
 import { chatScheduleMessages } from "@/db/chatSchema";
 import { ChatServices } from "@/features/chat";
 import { and, eq, lte } from "drizzle-orm";
-import { eventEmitter } from "../events/eventEmitter";
+// import { eventEmitter } from "../events/eventEmitter";
 
 const POLLING_INTERVAL_MS = 6_0000;
 const MAX_RETRIES = 3;
@@ -10,10 +10,10 @@ const RETRY_DELAY_MS = 10_000;
 
 const dateSet = new Set<number>();
 
-eventEmitter.on("scheduleMessageTime", (payload) => {
-  const timestamp = new Date(payload.data.scheduled_at).getTime();
-  dateSet.add(timestamp);
-});
+// eventEmitter.on("scheduleMessageTime", (payload) => {
+//   const timestamp = new Date(payload.data.scheduled_at).getTime();
+//   dateSet.add(timestamp);
+// });
 
 export const startMessageScheduler = async () => {
   console.log("🕒 Starting message scheduler...");

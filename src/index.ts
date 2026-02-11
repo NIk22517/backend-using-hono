@@ -101,9 +101,13 @@ export const initialize = async () => {
 
 initialize();
 
-process.on("SIGINT", async () => {
+const gracefulShutdown = async () => {
   console.log("Shutting down...");
   await redisClient.disconnect();
   await queueManager.shutdown();
   process.exit(0);
+};
+
+process.on("SIGINT", gracefulShutdown);
+process.on("SIGTERM", gracefulShutdown);
 });

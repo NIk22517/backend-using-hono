@@ -51,6 +51,11 @@ import {
   ChatMessage,
   PagingInfo,
 } from "./chat.schemas";
+import {
+  scheduledMessageQueue,
+  ScheduledMessageQueue,
+} from "@/core/queue/queues/ScheduledMessageQueue";
+import { queueManager } from "@/core/queue/QueueManager";
 
 export type SendMessagePayload = {
   chat_id: string;
@@ -1328,7 +1333,15 @@ export class ChatServices {
       })
       .returning();
 
-    eventEmitter.emit("scheduleMessageTime", { data: result });
+    await scheduledMessageQueue.scheduleMessage(
+      {
+        chatId: result.chat_id,
+        message: result.message ?? "",
+        scheduleId: result.id,
+        senderId: result.sender_id,
+      },
+      result.scheduled_at,
+    );
 
     return result;
   }

@@ -11,6 +11,7 @@ import { callRouter } from "./features/call";
 import { swaggerUI } from "@hono/swagger-ui";
 import { Scalar } from "@scalar/hono-api-reference";
 import { redisClient } from "./config/redis.client";
+import { queueManager } from "./core/queue/QueueManager";
 
 const port = parseInt(process.env.PORT ?? "8080", 10);
 
@@ -75,6 +76,8 @@ export const initialize = async () => {
       console.log("[Redis] Connected");
     }
 
+    await queueManager.initialize();
+
     const server = serve(
       {
         fetch: app.fetch,
@@ -87,7 +90,7 @@ export const initialize = async () => {
       },
     );
 
-    startMessageScheduler();
+    // startMessageScheduler();
     socketService = new SocketService(server);
     console.log("Application started successfully 🚀");
   } catch (error) {
@@ -101,5 +104,6 @@ initialize();
 process.on("SIGINT", async () => {
   console.log("Shutting down...");
   await redisClient.disconnect();
+  await queueManager.shutdown();
   process.exit(0);
 });

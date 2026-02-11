@@ -96,6 +96,6 @@ export const chatMiddleware = (
       }
     }
     c.set("chat_info", chatInfo);
-    next();
+    await next();
   };
 };

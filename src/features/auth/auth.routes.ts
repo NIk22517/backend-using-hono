@@ -7,6 +7,8 @@ import { toAppError } from "@/core/errors";
 import { ResponseBuilder } from "@/core/utils/ResponseBuilder";
 import { UserSuccessResponseSchema } from "../user/user.schemas";
 import { standardErrorResponses } from "@/core/utils/createRouteUtils";
+import { rateLimitMiddleware } from "@/middleware/rateLimitMiddleware";
+import { rateLimitConfig } from "@/core/utils/rateLimitConfig";
 
 const controller = new AuthController(services);
 
@@ -26,6 +28,8 @@ const authRoutes = new OpenAPIHono({
     }
   },
 }).basePath("/auth");
+
+authRoutes.use(rateLimitMiddleware(rateLimitConfig.auth.common));
 
 const signInRoute = createRoute({
   method: "post",

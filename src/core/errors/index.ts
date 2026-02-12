@@ -12,7 +12,7 @@ export const ErrorCodes = {
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
-export type HttpStatus = 400 | 401 | 403 | 404 | 409 | 422 | 500;
+export type HttpStatus = 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500;
 
 export class AppError<E = unknown> extends Error {
   readonly status: HttpStatus;

@@ -183,7 +183,6 @@ export const rateLimitMiddleware = (
     let limitResult: RateLimitResult | null = null;
 
     for (const identifier of identifiers) {
-      console.log(identifier, "identifier");
       const key = customKey
         ? `rate_limit:${route}:${customKey}:${identifier}`
         : `rate_limit:${route}:${identifier}`;

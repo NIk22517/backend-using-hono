@@ -177,7 +177,18 @@ const chatSendMsgRoute = createRoute({
         chat_id: z.string(),
         reply_message_id: z.string().optional(),
         files: z
-          .union([z.file(), z.array(z.file())])
+          .union([
+            z.any().openapi({
+              type: "string",
+              format: "binary",
+            }),
+            z.array(
+              z.any().openapi({
+                type: "string",
+                format: "binary",
+              }),
+            ),
+          ])
           .transform((v) => (Array.isArray(v) ? v : [v]))
           .optional(),
       }),

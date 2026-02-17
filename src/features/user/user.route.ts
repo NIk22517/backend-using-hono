@@ -8,12 +8,16 @@ import {
   createSuccessResponse,
   createMultipartRequest,
 } from "../../core/utils/createRouteUtils";
+import { rateLimitMiddleware } from "@/middleware/rateLimitMiddleware";
+import { rateLimitConfig } from "@/core/utils/rateLimitConfig";
 
 const controller = new UserController(services);
 
 const userRouter = new OpenAPIHono().basePath("/user");
 
-userRouter.use(authMiddleware);
+userRouter
+  .use(authMiddleware)
+  .use(rateLimitMiddleware(rateLimitConfig.user.common));
 
 const getCurrentUserRoute = createRoute({
   method: "get",

@@ -36,6 +36,8 @@ import {
   createMultipartRequest,
 } from "../../core/utils/createRouteUtils";
 import { chatMiddleware } from "@/middleware/chatMiddleware";
+import { rateLimitMiddleware } from "@/middleware/rateLimitMiddleware";
+import { rateLimitConfig } from "@/core/utils/rateLimitConfig";
 
 const controller = new ChatController(services);
 const chatRouter = new OpenAPIHono({
@@ -61,6 +63,7 @@ const chatListRoute = createRoute({
   path: "/",
   tags: ["Chat"],
   description: "Get chat list",
+  middleware: [rateLimitMiddleware(rateLimitConfig.chat.list)],
   request: createAuthenticatedRequest({
     query: chatListPaginationQuerySchema,
   }),
@@ -77,7 +80,10 @@ const chatSingleListRoute = createRoute({
   path: "/list/{chat_id}",
   tags: ["Chat"],
   description: "Get chat list",
-  middleware: [chatMiddleware()] as const,
+  middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.singleList),
+    chatMiddleware(),
+  ] as const,
   request: createAuthenticatedRequest({
     params: chatIdParamSchema,
   }),
@@ -94,6 +100,7 @@ const chatCoversationContactsRoute = createRoute({
   path: "/conversation-contacts",
   tags: ["Chat"],
   description: "Get conversation-contacts list",
+  middleware: [rateLimitMiddleware(rateLimitConfig.chat.coversationContact)],
   request: createAuthenticatedRequest(),
   responses: createSuccessResponse({
     schema: ChatCoversationContactsSuccessResponseSchema,
@@ -111,6 +118,7 @@ const createChat = createRoute({
   path: "/create",
   tags: ["Chat"],
   description: "Create a new chat",
+  middleware: [rateLimitMiddleware(rateLimitConfig.chat.createChat)],
   request: createAuthenticatedRequest({
     body: createJsonRequest({
       schema: createNewChatSchema,
@@ -131,6 +139,7 @@ const pinUnpinChatRoute = createRoute({
   tags: ["Chat"],
   description: "Pin/Unpin chat room",
   middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.pinChat),
     chatMiddleware({
       source: "body",
     }),
@@ -154,6 +163,7 @@ const chatSendMsgRoute = createRoute({
   path: "/send-message",
   tags: ["Chat"],
   middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.sendMessage),
     chatMiddleware({
       source: "form_data",
       broadcastCreatorOnly: true,
@@ -167,12 +177,19 @@ const chatSendMsgRoute = createRoute({
         chat_id: z.string(),
         reply_message_id: z.string().optional(),
         files: z
-          .array(
-            z.file().openapi({
+          .union([
+            z.any().openapi({
               type: "string",
               format: "binary",
             }),
-          )
+            z.array(
+              z.any().openapi({
+                type: "string",
+                format: "binary",
+              }),
+            ),
+          ])
+          .transform((v) => (Array.isArray(v) ? v : [v]))
           .optional(),
       }),
     }),
@@ -190,7 +207,10 @@ const chatMessagesRoute = createRoute({
   path: "/messages/{chat_id}",
   tags: ["Chat"],
   description: "Get All Chat Messages",
-  middleware: [chatMiddleware()] as const,
+  middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.getMessages),
+    chatMiddleware(),
+  ] as const,
   request: createAuthenticatedRequest({
     params: ChatMessagesParamsSchema,
     query: ChatMessagesQuerySchema,
@@ -209,6 +229,7 @@ const chatScheduleMessage = createRoute({
   tags: ["Chat"],
   description: "Chat Messages Schedule",
   middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.scheduleMessage),
     chatMiddleware({
       source: "form_data",
     }),
@@ -231,7 +252,10 @@ const getScheduleMessage = createRoute({
   path: "/schedule/{chat_id}",
   tags: ["Chat"],
   description: "Get All Schedule Messages",
-  middleware: [chatMiddleware()] as const,
+  middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.getscheduleMessage),
+    chatMiddleware(),
+  ] as const,
   request: createAuthenticatedRequest({
     params: chatIdParamSchema,
   }),
@@ -248,6 +272,7 @@ const deleteSchedule = createRoute({
   path: "/schedule/{schedule_id}",
   tags: ["Chat"],
   description: "Delete Schedule",
+  middleware: [rateLimitMiddleware(rateLimitConfig.chat.deleteSchedule)],
   request: createAuthenticatedRequest({
     params: z.object({
       schedule_id: z.string(),
@@ -266,6 +291,7 @@ const updateSchedule = createRoute({
   path: "/schedule",
   tags: ["Chat"],
   description: "Update Schedule Message",
+  middleware: [rateLimitMiddleware(rateLimitConfig.chat.updateSchedule)],
   request: createAuthenticatedRequest({
     body: createJsonRequest({
       schema: updateScheduleSchema,
@@ -285,7 +311,10 @@ const chatMarkAsReadMessage = createRoute({
   path: "/read/{chat_id}",
   tags: ["Chat"],
   description: "Mark Chat as read",
-  middleware: [chatMiddleware()] as const,
+  middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.markMessageRead),
+    chatMiddleware(),
+  ] as const,
   request: createAuthenticatedRequest({
     params: chatIdParamSchema,
   }),
@@ -303,6 +332,7 @@ const chatDeleteMessageRoute = createRoute({
   tags: ["Chat"],
   description: "Delete Chat Messages or clear chat",
   middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.deleteMessage),
     chatMiddleware({
       source: "body",
     }),
@@ -325,7 +355,10 @@ const chatMessageStatusRoute = createRoute({
   path: "/read-status/{chat_id}/{message_id}",
   tags: ["Chat"],
   description: "Get Message Status who have read it or who have received it",
-  middleware: [chatMiddleware()] as const,
+  middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.messageStatus),
+    chatMiddleware(),
+  ] as const,
   request: createAuthenticatedRequest({
     params: chatIdParamSchema.extend({
       message_id: z.coerce.number().openapi({
@@ -348,7 +381,10 @@ const chatSearchMessageRoute = createRoute({
   path: "/messages-search/{chat_id}",
   tags: ["Chat"],
   description: "Search Messages with keywords",
-  middleware: [chatMiddleware()] as const,
+  middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.searchMessage),
+    chatMiddleware(),
+  ] as const,
   request: createAuthenticatedRequest({
     params: chatIdParamSchema,
     query: z.object({

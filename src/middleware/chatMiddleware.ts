@@ -70,32 +70,39 @@ export const chatMiddleware = (
       });
       return c.json(res, status);
     };
-
-    const user = c.get("user");
-    if (!user) {
-      return fail("Authentication required", 401);
-    }
-    const chatId = await extractChatId({ c, source, fieldName });
-    if (!chatId) {
-      return fail(`Missing or invalid ${fieldName}`, 400);
-    }
-    const chatInfo = await redisCache.getOrSetMapChat(chatId);
-    if (!chatInfo) {
-      return fail(`Chat ${chatId} not found`, 404);
-    }
-    if (requireMembership) {
-      const userIsMember = chatInfo.members.has(user.id);
-      if (!userIsMember) {
-        return fail(`You do not have access to chat ${chatId}`, 403);
+    try {
+      const user = c.get("user");
+      if (!user) {
+        return fail("Authentication required", 401);
       }
-    }
-    if (broadcastCreatorOnly && chatInfo.chat_type === "broadcast") {
-      const creatorCheck = chatInfo.created_by === user.id;
-      if (!creatorCheck) {
-        return fail("Only the broadcast creator can perform this action", 403);
+      const chatId = await extractChatId({ c, source, fieldName });
+      if (!chatId) {
+        return fail(`Missing or invalid ${fieldName}`, 400);
       }
+      const chatInfo = await redisCache.getOrSetMapChat(chatId);
+      if (!chatInfo) {
+        return fail(`Chat ${chatId} not found`, 404);
+      }
+      if (requireMembership) {
+        const userIsMember = chatInfo.members.has(user.id);
+        if (!userIsMember) {
+          return fail(`You do not have access to chat ${chatId}`, 403);
+        }
+      }
+      if (broadcastCreatorOnly && chatInfo.chat_type === "broadcast") {
+        const creatorCheck = chatInfo.created_by === user.id;
+        if (!creatorCheck) {
+          return fail(
+            "Only the broadcast creator can perform this action",
+            403,
+          );
+        }
+      }
+      c.set("chat_info", chatInfo);
+      await next();
+    } catch (error) {
+      console.error("Unexpected Chat error:", error);
+      return fail("Chat Middleware error", 500);
     }
-    c.set("chat_info", chatInfo);
-    await next();
   };
 };

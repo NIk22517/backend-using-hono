@@ -12,16 +12,21 @@ import { swaggerUI } from "@hono/swagger-ui";
 import { Scalar } from "@scalar/hono-api-reference";
 import { redisClient } from "./config/redis.client";
 import { queueManager } from "./core/queue/QueueManager";
+import { rateLimitMiddleware } from "./middleware/rateLimitMiddleware";
+import { rateLimitConfig } from "./core/utils/rateLimitConfig";
+import { pool } from "./db";
 
 const port = parseInt(process.env.PORT ?? "8080", 10);
 
 const app = new OpenAPIHono();
 
-app.use(
-  cors({
-    origin: ["http://localhost:3001"],
-  }),
-);
+app
+  .use(
+    cors({
+      origin: ["http://localhost:3001"],
+    }),
+  )
+  .use(rateLimitMiddleware(rateLimitConfig.global.perIP));
 
 app.route("/", authRoutes);
 app.route("/", userRouter);
@@ -71,6 +76,10 @@ export let socketService: SocketService;
 export const initialize = async () => {
   try {
     console.log("Starting application...");
+    console.log("[DB] Connecting...");
+    await pool.query("SELECT 1");
+    console.log("[DB] Connected successfully ✅");
+
     if (!redisClient.getClient().isOpen) {
       await redisClient.connect();
       console.log("[Redis] Connected");
@@ -103,6 +112,8 @@ initialize();
 
 const gracefulShutdown = async () => {
   console.log("Shutting down...");
+  await pool.end();
+  console.log("[DB] Disconnected");
   await redisClient.disconnect();
   await queueManager.shutdown();
   process.exit(0);
@@ -110,4 +121,3 @@ const gracefulShutdown = async () => {
 
 process.on("SIGINT", gracefulShutdown);
 process.on("SIGTERM", gracefulShutdown);
-});

@@ -92,7 +92,7 @@ export class ChatController extends BaseController {
         throw new Error("User not found");
       }
       const data = await ctx.req.formData();
-      const message = data.get("message");
+      const message = data.get("message") ?? "";
       const chat_id = data.get("chat_id");
       const reply_message_id = data.get("reply_message_id") as string;
       const files = data

@@ -1,5 +1,5 @@
 import { HttpStatus } from "@/core/errors";
-import { JWT_SECRET } from "@/core/utils/EnvValidator";
+import { Environment } from "@/core/utils/EnvValidator";
 import { ResponseBuilder } from "@/core/utils/ResponseBuilder";
 import { MiddlewareHandler } from "hono";
 import {
@@ -24,7 +24,7 @@ export const authMiddleware: MiddlewareHandler = async (c, next) => {
   }
 
   try {
-    const decoded = verify(authHeader, JWT_SECRET);
+    const decoded = verify(authHeader, Environment.JWT_SECRET);
 
     if (typeof decoded !== "object" || !("id" in decoded)) {
       return fail("Invalid token payload", 401);

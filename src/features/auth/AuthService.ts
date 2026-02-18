@@ -1,6 +1,6 @@
 import { Services } from "@/core/di/types";
 import { AppError } from "@/core/errors";
-import { JWT_SECRET } from "@/core/utils/EnvValidator";
+import { Environment } from "@/core/utils/EnvValidator";
 import { db } from "@/db";
 import { usersTable } from "@/db/schema";
 import { hash, compare } from "bcryptjs";
@@ -36,7 +36,7 @@ export class AuthService {
     };
     const [data] = await db.insert(usersTable).values(user).returning();
 
-    const token = sign(data, JWT_SECRET, {
+    const token = sign(data, Environment.JWT_SECRET, {
       expiresIn: "7d",
     });
 
@@ -66,7 +66,7 @@ export class AuthService {
       throw new Error("Invalid credentials");
     }
 
-    const token = sign(check, JWT_SECRET, {
+    const token = sign(check, Environment.JWT_SECRET, {
       expiresIn: "7d",
     });
 

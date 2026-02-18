@@ -4,7 +4,7 @@ import { and, desc, eq, gt } from "drizzle-orm";
 import axios from "axios";
 import { stream } from "hono/streaming";
 import { Context } from "hono";
-import { OLLAMA_URL } from "@/core/utils/EnvValidator";
+import { Environment } from "@/core/utils/EnvValidator";
 
 interface NomicEmbeddingResponse {
   embedding: number[];
@@ -40,7 +40,7 @@ export class AiService {
       Summary:`;
 
       const ollamaStream = await axios.post(
-        `${OLLAMA_URL}/api/generate`,
+        `${Environment.OLLAMA_URL}/api/generate`,
         {
           model: "llama3.2:1b",
           prompt: prompt,
@@ -116,7 +116,7 @@ export class AiService {
       const prompt = `CHAT MESSAGES:\n${messagesText}\n\nATTACHMENT CONTENT:\n${"No specific attachment content provided."}`;
 
       const ollamaStream = await axios.post<NodeJS.ReadableStream>(
-        `${OLLAMA_URL}/api/generate`,
+        `${Environment.OLLAMA_URL}/api/generate`,
         {
           model: "chat-summary",
           prompt: prompt,
@@ -237,12 +237,15 @@ Text before or after array.
 NOW OUTPUT ONLY THE ARRAY:
 `;
 
-      const ollamaRes = await axios.post(`${OLLAMA_URL}/api/generate`, {
-        model: "llama3.2:1b",
-        prompt,
-        stream: false,
-        format: "json",
-      });
+      const ollamaRes = await axios.post(
+        `${Environment.OLLAMA_URL}/api/generate`,
+        {
+          model: "llama3.2:1b",
+          prompt,
+          stream: false,
+          format: "json",
+        },
+      );
 
       let suggestions: string[] = [];
       try {
@@ -288,7 +291,7 @@ NOW OUTPUT ONLY THE ARRAY:
 
     try {
       const { data } = await axios.post<NomicEmbeddingResponse>(
-        `${OLLAMA_URL}/api/embeddings`,
+        `${Environment.OLLAMA_URL}/api/embeddings`,
         {
           model: "nomic-embed-text:v1.5",
           prompt: result[0].message,

@@ -3,11 +3,12 @@ import { serve } from "@hono/node-server";
 import { authRoutes } from "@/features/auth";
 import { userRouter } from "@/features/user";
 import { chatRouter } from "@/features/chat";
+import { callRouter } from "@/features/call";
+import { aiRouter } from "@/features/ai";
+import { inviteRouter } from "@/features/invite";
 import SocketService from "./config/socket";
 import { cors } from "hono/cors";
-import { aiRouter } from "./features/ai";
 import { startMessageScheduler } from "./core/schedule/MessageSchedule";
-import { callRouter } from "./features/call";
 import { swaggerUI } from "@hono/swagger-ui";
 import { Scalar } from "@scalar/hono-api-reference";
 import { redisClient } from "./config/redis.client";
@@ -31,6 +32,7 @@ app
 app.route("/", authRoutes);
 app.route("/", userRouter);
 app.route("/", chatRouter);
+app.route("/", inviteRouter);
 app.route("/", aiRouter);
 app.route("/", callRouter);
 

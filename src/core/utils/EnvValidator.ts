@@ -12,6 +12,7 @@ const envSchema = z.object({
   OLLAMA_URL: z.string().startsWith("http"),
   REDIS_PASSWORD: z.string().min(6),
   REDIS_URL: z.string().startsWith("redis"),
+  RESEND_API_KEY: z.string().min(6),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -21,13 +22,4 @@ if (!parsedEnv.success) {
   process.exit(1);
 }
 
-export const {
-  OLLAMA_URL,
-  CLOUDINARY_API_SECRET,
-  CLOUDINARY_API_KEY,
-  CLOUDINARY_CLOUD_NAME,
-  DATABASE_URL,
-  JWT_SECRET,
-  REDIS_PASSWORD,
-  REDIS_URL,
-} = parsedEnv.data;
+export const Environment = parsedEnv.data;

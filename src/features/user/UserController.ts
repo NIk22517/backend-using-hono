@@ -5,6 +5,7 @@ import { z } from "zod";
 import { encodeBase64 } from "hono/utils/encode";
 import { openApiResponseWrapper } from "@/core/http/openApiResponseWrapper";
 import { AppError } from "@/core/errors";
+import { getCurrentUserRoute, getUserByIdRoute, updateUserRoute } from "./user.contract";
 
 const updateUserSchema = z.object({
   name: z.string().min(3).max(50).nullable().optional(),
@@ -16,6 +17,7 @@ export class UserController extends BaseController {
     super("UserService");
   }
   getTokenUser = openApiResponseWrapper({
+    route: getCurrentUserRoute,
     action: "get_user_from_token",
     builder: this.builder,
     successMsg: "User Get Successfully!",
@@ -28,6 +30,7 @@ export class UserController extends BaseController {
     },
   });
   getUserById = openApiResponseWrapper({
+    route: getUserByIdRoute,
     action: "get_user_by_id",
     builder: this.builder,
     successMsg: "User Found",
@@ -50,6 +53,7 @@ export class UserController extends BaseController {
   });
 
   editUserDetails = openApiResponseWrapper({
+    route: updateUserRoute,
     action: "edit_user_details",
     builder: this.builder,
     successMsg: "User Details Updated Successfully",

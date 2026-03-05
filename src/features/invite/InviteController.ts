@@ -3,6 +3,7 @@ import { AppError } from "@/core/errors";
 import { BaseController } from "@/core/http/BaseController";
 import { openApiResponseWrapper } from "@/core/http/openApiResponseWrapper";
 import { sendInviteSchema } from "./invite.schemas";
+import { sendInviteRoute } from "./invite.contract";
 
 export class InviteController extends BaseController {
   constructor(private readonly deps: Services) {
@@ -10,6 +11,7 @@ export class InviteController extends BaseController {
   }
 
   sendInvite = openApiResponseWrapper({
+    route: sendInviteRoute,
     action: "send_invite",
     successMsg: "Invite Sent Successfully",
     builder: this.builder,

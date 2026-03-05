@@ -16,7 +16,7 @@ export {
   broadcastRecipients,
   chatMessageReadReceipts,
   chatReadSummary,
-  chatClearStates
+  chatClearStates,
 } from "./chatSchema";
 export {
   chatCalls,
@@ -25,3 +25,9 @@ export {
   callTypeEnum,
   participantStatusEnum,
 } from "./callSchema";
+
+export {
+  chatInvites,
+  inviteChannelEnum,
+  inviteStatusEnum,
+} from "./inviteSchema";

@@ -70,7 +70,7 @@ export const createAuthenticatedRequest = <
   ({
     headers: authHeaderSchema,
     ...additional,
-  }) as const;
+  }) as { headers: typeof authHeaderSchema } & T;
 
 export const createMultipartRequest = <T extends z.ZodTypeAny>({
   schema,

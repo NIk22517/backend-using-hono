@@ -1,8 +1,9 @@
-import { CachedChatInfo } from "@/core/cache/redis.cache";
+// hono.d.ts
+import type { CachedChatInfo } from "@/core/cache/redis.cache";
 import type { usersTable } from "@/db/schema";
 import type { InferSelectModel } from "drizzle-orm";
 
-export type UserType = InferSelectModel<typeof usersTable>;
+type UserType = InferSelectModel<typeof usersTable>;
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -10,3 +11,5 @@ declare module "hono" {
     chat_info?: CachedChatInfo;
   }
 }
+
+export {};

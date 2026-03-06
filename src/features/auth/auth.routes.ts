@@ -6,10 +6,11 @@ import { ResponseBuilder } from "@/core/utils/ResponseBuilder";
 import { rateLimitMiddleware } from "@/middleware/rateLimitMiddleware";
 import { rateLimitConfig } from "@/core/utils/rateLimitConfig";
 import { logInRoute, signInRoute } from "./auth.contract";
+import { AppEnv } from "@/types/env";
 
 const controller = new AuthController(services);
 
-const authRoutes = new OpenAPIHono({
+const authRoutes = new OpenAPIHono<AppEnv>({
   defaultHook: (result, c) => {
     if (!result.success) {
       const error = toAppError(result.error);

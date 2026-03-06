@@ -9,18 +9,28 @@ import { rateLimitMiddleware } from "@/middleware/rateLimitMiddleware";
 import { createRoute, z } from "@hono/zod-openapi";
 import {
   ChatCoversationContactsSuccessResponseSchema,
+  ChatDeleteMessageSuccessSchema,
   ChatGetMessagesSuccessSchema,
+  ChatGetScheduleSuccessSchema,
   chatIdParamSchema,
   chatListPaginationQuerySchema,
   ChatListSuccessResponseSchema,
+  ChatMarkAsReadSuccessSchema,
   ChatMessagesParamsSchema,
   ChatMessagesQuerySchema,
+  ChatMessageStatusSuccessSchema,
   ChatPinUnpinSuccessResponseSchema,
+  ChatScheduleMessagesSuccessSchema,
+  ChatSearchMessageSuccessSchema,
   ChatSendMessageSuccessSchema,
   ChatSingleListSuccessResponseSchema,
   CreateChatSuccessResponseSchema,
   createNewChatSchema,
+  DeleteMessageSchema,
   PinUnpinPayload,
+  ScheduleMessagesSuccessSchema,
+  scheduleSchema,
+  updateScheduleSchema,
 } from "./chat.schemas";
 import { chatMiddleware } from "@/middleware/chatMiddleware";
 
@@ -169,5 +179,173 @@ export const chatMessagesRoute = createRoute({
   responses: createSuccessResponse({
     schema: ChatGetMessagesSuccessSchema,
     description: "Get Chat Messages Successfully",
+  }),
+});
+
+export const chatScheduleMessage = createRoute({
+  method: "post",
+  path: "/messages/schedule",
+  tags: ["Chat"],
+  description: "Chat Messages Schedule",
+  middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.scheduleMessage),
+    chatMiddleware({
+      source: "form_data",
+    }),
+  ] as const,
+  request: createAuthenticatedRequest({
+    body: createMultipartRequest({
+      schema: scheduleSchema,
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ChatScheduleMessagesSuccessSchema,
+    description: "Successfully Schedule Messages",
+  }),
+});
+
+export const getScheduleMessage = createRoute({
+  method: "get",
+  path: "/schedule/{chat_id}",
+  tags: ["Chat"],
+  description: "Get All Schedule Messages",
+  middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.getscheduleMessage),
+    chatMiddleware(),
+  ] as const,
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema,
+  }),
+  responses: createSuccessResponse({
+    schema: ChatGetScheduleSuccessSchema,
+    description: "Schedule Messages Get Successfully",
+  }),
+});
+
+export const deleteSchedule = createRoute({
+  method: "delete",
+  path: "/schedule/{schedule_id}",
+  tags: ["Chat"],
+  description: "Delete Schedule",
+  middleware: [rateLimitMiddleware(rateLimitConfig.chat.deleteSchedule)],
+  request: createAuthenticatedRequest({
+    params: z.object({
+      schedule_id: z.coerce.number(),
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ScheduleMessagesSuccessSchema,
+    description: "Schedule Deleted Successfully",
+  }),
+});
+
+export const updateSchedule = createRoute({
+  method: "post",
+  path: "/schedule",
+  tags: ["Chat"],
+  description: "Update Schedule Message",
+  middleware: [rateLimitMiddleware(rateLimitConfig.chat.updateSchedule)],
+  request: createAuthenticatedRequest({
+    body: createJsonRequest({
+      schema: updateScheduleSchema,
+      description: "Update Schedule Message payload",
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ChatScheduleMessagesSuccessSchema,
+    description: "Schedule Updated Successfully",
+  }),
+});
+
+export const chatMarkAsReadMessage = createRoute({
+  method: "get",
+  path: "/read/{chat_id}",
+  tags: ["Chat"],
+  description: "Mark Chat as read",
+  middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.markMessageRead),
+    chatMiddleware(),
+  ] as const,
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema,
+  }),
+  responses: createSuccessResponse({
+    schema: ChatMarkAsReadSuccessSchema,
+    description: "Mark Chat Messages as Read",
+  }),
+});
+
+export const chatDeleteMessageRoute = createRoute({
+  method: "post",
+  path: "/messages/delete",
+  tags: ["Chat"],
+  description: "Delete Chat Messages or clear chat",
+  middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.deleteMessage),
+    chatMiddleware({
+      source: "body",
+    }),
+  ] as const,
+  request: createAuthenticatedRequest({
+    body: createJsonRequest({
+      schema: DeleteMessageSchema,
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ChatDeleteMessageSuccessSchema,
+    description: "Delete Messages Successfully",
+  }),
+});
+
+export const chatMessageStatusRoute = createRoute({
+  method: "get",
+  path: "/read-status/{chat_id}/{message_id}",
+  tags: ["Chat"],
+  description: "Get Message Status who have read it or who have received it",
+  middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.messageStatus),
+    chatMiddleware(),
+  ] as const,
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema.extend({
+      message_id: z.coerce.number().openapi({
+        param: { name: "message_id", in: "path" },
+        example: 10,
+        description: "Message ID",
+      }),
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ChatMessageStatusSuccessSchema,
+    description: "Success",
+  }),
+});
+
+export const chatSearchMessageRoute = createRoute({
+  method: "get",
+  path: "/messages-search/{chat_id}",
+  tags: ["Chat"],
+  description: "Search Messages with keywords",
+  middleware: [
+    rateLimitMiddleware(rateLimitConfig.chat.searchMessage),
+    chatMiddleware(),
+  ] as const,
+  request: createAuthenticatedRequest({
+    params: chatIdParamSchema,
+    query: z.object({
+      search_text: z.string().min(2),
+      limit: z.coerce
+        .number()
+        .min(1, {
+          message: "Limit should be greater then zero",
+        })
+        .max(20)
+        .optional(),
+      cursor: z.string().optional(),
+    }),
+  }),
+  responses: createSuccessResponse({
+    schema: ChatSearchMessageSuccessSchema,
+    description: "Messages Search Successfully",
   }),
 });

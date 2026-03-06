@@ -1,9 +1,11 @@
-import type { Context } from "hono";
 import { toAppError } from "../errors";
 import type { ResponseBuilder } from "@/core/utils/ResponseBuilder";
 import { RouteConfig, RouteHandler } from "@hono/zod-openapi";
+import { AppEnv } from "@/types/env";
 
-type InferRouteContext<R extends RouteConfig> = Parameters<RouteHandler<R>>[0];
+type InferRouteContext<R extends RouteConfig> = Parameters<
+  RouteHandler<R, AppEnv>
+>[0];
 type RouteHandlerFn<R extends RouteConfig, Result> = (
   ctx: InferRouteContext<R>,
 ) => Promise<Result>;

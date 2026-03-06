@@ -9,9 +9,10 @@ import {
   getUserByIdRoute,
   updateUserRoute,
 } from "./user.contract";
+import { AppEnv } from "@/types/env";
 
 const controller = new UserController(services);
-const userRouter = new OpenAPIHono().basePath("/user");
+const userRouter = new OpenAPIHono<AppEnv>().basePath("/user");
 
 userRouter
   .use(authMiddleware)

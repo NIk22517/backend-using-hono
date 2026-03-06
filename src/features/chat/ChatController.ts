@@ -7,12 +7,20 @@ import { createNewChatSchema, GetChatMessagesSchema } from "./chat.schemas";
 import { AppError } from "@/core/errors";
 import {
   chatCoversationContactsRoute,
+  chatDeleteMessageRoute,
   chatListRoute,
+  chatMarkAsReadMessage,
   chatMessagesRoute,
+  chatMessageStatusRoute,
+  chatScheduleMessage,
+  chatSearchMessageRoute,
   chatSendMsgRoute,
   chatSingleListRoute,
   createChat,
+  deleteSchedule,
+  getScheduleMessage,
   pinUnpinChatRoute,
+  updateSchedule,
 } from "./chat.contract";
 
 const pinSchema = z.object({
@@ -130,24 +138,17 @@ export class ChatController extends BaseController {
       }
       const { chat_id } = ctx.req.valid("param");
       const query = ctx.req.valid("query");
-      const payload = GetChatMessagesSchema.safeParse({
-        chat_id,
-        user_id: user.id,
-        chat_type: chat_info.chat_type,
-        ...query,
-      });
-
-      if (!payload.success) {
-        throw payload.error;
-      }
-
       return await this.deps.chatServices.getChatMessages({
-        ...payload.data,
+        chat_id,
+        chat_type: chat_info.chat_type,
+        user_id: user.id,
+        ...query,
       });
     },
   });
 
   markAsReadMsg = openApiResponseWrapper({
+    route: chatMarkAsReadMessage,
     action: "mark_as_read_all_chat_messages",
     builder: this.builder,
     successMsg: "Success change status to read",
@@ -156,14 +157,7 @@ export class ChatController extends BaseController {
       if (!user) {
         throw new Error("User Not Found");
       }
-      const { chat_id: Id } = ctx.req.param();
-
-      const chat_id = Number(Id);
-
-      if (!chat_id) {
-        throw new Error("Chat id is required");
-      }
-
+      const { chat_id } = ctx.req.valid("param");
       return await this.deps.chatServices.markAsReadMsg({
         chat_id,
         user_id: user.id,
@@ -172,6 +166,7 @@ export class ChatController extends BaseController {
   });
 
   deleteMessages = openApiResponseWrapper({
+    route: chatDeleteMessageRoute,
     action: "delete_user_messages",
     builder: this.builder,
     successMsg: "Message Deleted Successfully",
@@ -180,16 +175,13 @@ export class ChatController extends BaseController {
       if (!user) {
         throw new Error("User not found");
       }
-      const { data } = await ctx.req.json();
-      if (!data) {
-        throw new Error("Data is not provided");
-      }
+      const { data } = ctx.req.valid("json");
 
       return await this.deps.chatServices.deleteMessages({
         action: data.action,
         chat_id: Number(data.chat_id),
         user_id: user.id,
-        message_ids: data?.message_ids,
+        message_ids: data.action !== "clear_chat" ? data?.message_ids : [],
       });
     },
   });
@@ -224,6 +216,7 @@ export class ChatController extends BaseController {
   });
 
   scheduleMessages = openApiResponseWrapper({
+    route: chatScheduleMessage,
     action: "schedule message",
     successMsg: "Successfully Schedule Message",
     builder: this.builder,
@@ -232,65 +225,36 @@ export class ChatController extends BaseController {
       if (!user) {
         throw new Error("User not found");
       }
-      const data = await ctx.req.formData();
-      const message = data.get("message");
-      const chat_id = data.get("chat_id");
-      const scheduled_at = data.get("scheduled_at");
-
-      const check = z.object({
-        chat_id: z.coerce.number(),
-        message: z.string().default(""),
-        scheduled_at: z.preprocess((arg) => {
-          if (typeof arg === "string" || arg instanceof Date)
-            return new Date(arg);
-        }, z.date()),
-      });
-
-      const parseData = check.safeParse({
+      const { chat_id, message, scheduled_at } = ctx.req.valid("form");
+      return this.deps.chatServices.scheduleMessage({
         chat_id,
         message,
         scheduled_at,
-      });
-
-      if (!parseData.success) {
-        throw parseData.error;
-      }
-
-      return this.deps.chatServices.scheduleMessage({
-        ...parseData.data,
         sender_id: user.id,
       });
     },
   });
 
   getScheduleMessage = openApiResponseWrapper({
+    route: getScheduleMessage,
     action: "get schedule messages",
     successMsg: "Successfully get schedule messages",
     builder: this.builder,
     handler: async (ctx) => {
       const user = ctx.get("user");
-      const { chat_id } = ctx.req.param();
       if (!user) {
         throw new Error("User not found");
       }
-      const check = z.object({
-        chat_id: z.coerce.number(),
-      });
-
-      const parseData = check.safeParse({
-        chat_id,
-      });
-      if (!parseData.success) {
-        throw parseData.error;
-      }
+      const { chat_id } = ctx.req.valid("param");
       return this.deps.chatServices.getScheduleMessages({
         user_id: user.id,
-        chat_id: parseData.data.chat_id,
+        chat_id,
       });
     },
   });
 
   deleteScheduleMessage = openApiResponseWrapper({
+    route: deleteSchedule,
     action: "delete_schedule_message",
     successMsg: "Deleted Successfully",
     builder: this.builder,
@@ -299,25 +263,16 @@ export class ChatController extends BaseController {
       if (!user) {
         throw new Error("User not found");
       }
-      const { schedule_id } = ctx.req.param();
-      const check = z.object({
-        schedule_id: z.coerce.number(),
-        user_id: z.number(),
-      });
-      const parse = check.safeParse({
+      const { schedule_id } = ctx.req.valid("param");
+      return this.deps.chatServices.deleteScheduleMessage({
+        schedule_id,
         user_id: user.id,
-        schedule_id: schedule_id,
       });
-
-      if (!parse.success) {
-        throw parse.error;
-      }
-
-      return this.deps.chatServices.deleteScheduleMessage({ ...parse.data });
     },
   });
 
   updateScheduleMessages = openApiResponseWrapper({
+    route: updateSchedule,
     action: "update_schedule_message",
     successMsg: "Updated Successfully",
     builder: this.builder,
@@ -326,32 +281,16 @@ export class ChatController extends BaseController {
       if (!user) {
         throw new Error("User not found");
       }
-      const { data } = await ctx.req.json();
-      const check = z.object({
-        schedule_id: z.coerce.number(),
-        user_id: z.number(),
-        message: z.string().default(""),
-        scheduled_at: z
-          .preprocess((arg) => {
-            if (typeof arg === "string" || arg instanceof Date)
-              return new Date(arg);
-          }, z.date())
-          .optional(),
-      });
-      const parse = check.safeParse({
+      const { data } = ctx.req.valid("json");
+      return this.deps.chatServices.updateScheduleMessages({
         user_id: user.id,
         ...data,
       });
-
-      if (!parse.success) {
-        throw parse.error;
-      }
-
-      return this.deps.chatServices.updateScheduleMessages({ ...parse.data });
     },
   });
 
   checkMessageStatus = openApiResponseWrapper({
+    route: chatMessageStatusRoute,
     action: "check_messages_status",
     builder: this.builder,
     successMsg: "Successfully get messages status",
@@ -364,29 +303,18 @@ export class ChatController extends BaseController {
       if (!chat_info) {
         throw AppError.notFound("Chat Not found");
       }
-      const { chat_id, message_id } = ctx.req.param();
-      const schema = z
-        .object({
-          chat_id: z.coerce.number(),
-          message_id: z.coerce.number(),
-        })
-        .safeParse({
-          chat_id,
-          message_id,
-        });
-      if (!schema.success) {
-        throw schema.error;
-      }
-
+      const { chat_id, message_id } = ctx.req.valid("param");
       return this.deps.chatServices.checkStatus({
-        ...schema.data,
         user_id: user.id,
         chat_type: chat_info.chat_type,
+        chat_id,
+        message_id,
       });
     },
   });
 
   messagesSearch = openApiResponseWrapper({
+    route: chatSearchMessageRoute,
     action: "search_messages",
     builder: this.builder,
     successMsg: "Successfully found messages",
@@ -395,33 +323,14 @@ export class ChatController extends BaseController {
       if (!user) {
         throw new Error("User Not found");
       }
-      const { chat_id } = ctx.req.param();
-      const query = ctx.req.query();
-      const schema = z
-        .object({
-          user_id: z.number().positive(),
-          chat_id: z.coerce.number().positive(),
-          search_text: z.string().min(2),
-          limit: z.coerce
-            .number()
-            .min(1, {
-              message: "Limit should be greater then zero",
-            })
-            .max(20)
-            .optional(),
-          cursor: z.string().optional(),
-        })
-        .safeParse({
-          user_id: user.id,
-          chat_id,
-          ...query,
-        });
+      const { chat_id } = ctx.req.valid("param");
+      const query = ctx.req.valid("query");
 
-      if (!schema.success) {
-        throw schema.error;
-      }
-
-      return this.deps.chatServices.searchMessages({ ...schema.data });
+      return this.deps.chatServices.searchMessages({
+        chat_id,
+        user_id: user.id,
+        ...query,
+      });
     },
   });
 }

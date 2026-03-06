@@ -3,9 +3,10 @@ import { InviteController } from "./InviteController";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { authMiddleware } from "@/middleware/authMiddleware";
 import { sendInviteRoute } from "./invite.contract";
+import { AppEnv } from "@/types/env";
 
 const controller = new InviteController(services);
-const inviteRouter = new OpenAPIHono().basePath("/invite");
+const inviteRouter = new OpenAPIHono<AppEnv>().basePath("/invite");
 
 inviteRouter.use(authMiddleware);
 inviteRouter.openapi(sendInviteRoute, controller.sendInvite);

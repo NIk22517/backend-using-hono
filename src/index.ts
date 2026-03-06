@@ -16,10 +16,11 @@ import { queueManager } from "./core/queue/QueueManager";
 import { rateLimitMiddleware } from "./middleware/rateLimitMiddleware";
 import { rateLimitConfig } from "./core/utils/rateLimitConfig";
 import { pool } from "./db";
+import { AppEnv } from "./types/env";
 
 const port = parseInt(process.env.PORT ?? "8080", 10);
 
-const app = new OpenAPIHono();
+const app = new OpenAPIHono<AppEnv>();
 
 app
   .use(

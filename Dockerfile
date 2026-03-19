@@ -1,25 +1,30 @@
-FROM node:24-alpine
+FROM node:24-alpine AS builder
 
-# Enable corepack and activate pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Set working directory
 WORKDIR /app
 
-# Copy only what's needed for installing dependencies
 COPY package.json pnpm-lock.yaml* ./
+RUN pnpm install --frozen-lockfile
 
-
-# Install dependencies
-RUN pnpm install
-
-# Copy source files
 COPY tsconfig.json ./
-COPY .env ./
 COPY drizzle.config.ts ./
 COPY src ./src
-
 COPY drizzle ./drizzle
 
-# Start the app
-CMD ["pnpm", "run", "dev"]
+RUN pnpm run build  # compiles TypeScript → dist/
+
+# ── Production image ──────────────────────────────
+FROM node:24-alpine AS runner
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml* ./
+RUN pnpm install --frozen-lockfile --prod  # no devDependencies
+
+COPY --from=builder /app/dist ./dist
+COPY drizzle ./drizzle
+
+CMD ["node", "dist/index.js"]

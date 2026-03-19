@@ -8,7 +8,6 @@ import { aiRouter } from "@/features/ai";
 import { inviteRouter } from "@/features/invite";
 import SocketService from "./config/socket";
 import { cors } from "hono/cors";
-import { startMessageScheduler } from "./core/schedule/MessageSchedule";
 import { swaggerUI } from "@hono/swagger-ui";
 import { Scalar } from "@scalar/hono-api-reference";
 import { redisClient } from "./config/redis.client";

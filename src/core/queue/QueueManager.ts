@@ -1,6 +1,7 @@
 import { scheduledMessageQueue } from "./queues/ScheduledMessageQueue";
 import type { BaseQueueManager } from "./base/BaseQueueManager";
 import type { QueueHealth } from "./base/BaseQueueManager";
+import { summaryMessageQueue } from "./queues/SummaryMessageQueue";
 
 export class QueueManager {
   private queues: Map<string, BaseQueueManager> = new Map();
@@ -8,6 +9,7 @@ export class QueueManager {
 
   constructor() {
     this.registerQueue(scheduledMessageQueue);
+    this.registerQueue(summaryMessageQueue);
   }
 
   private registerQueue(queue: BaseQueueManager): void {
@@ -29,6 +31,7 @@ export class QueueManager {
 
     try {
       await scheduledMessageQueue.bootstrap();
+      await summaryMessageQueue.scheduleDailySummary();
       this.startPeriodicCleanup();
 
       console.log("[QueueManager] ✅ All queues initialized");

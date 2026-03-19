@@ -3,7 +3,7 @@ import type { CachedChatInfo } from "@/core/cache/redis.cache";
 import type { usersTable } from "@/db/schema";
 import type { InferSelectModel } from "drizzle-orm";
 
-type UserType = InferSelectModel<typeof usersTable>;
+export type UserType = InferSelectModel<typeof usersTable>;
 
 declare module "hono" {
   interface ContextVariableMap {

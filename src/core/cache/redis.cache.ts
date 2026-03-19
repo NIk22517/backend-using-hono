@@ -10,18 +10,29 @@ import { eq } from "drizzle-orm";
 
 export interface CacheTTLConfig {
   readonly CHAT_INFO: number;
+  readonly MESSAGE_SUGGESTION: number;
 }
 
 export const CACHE_TTL: CacheTTLConfig = {
   CHAT_INFO: 7200, // 2 hours
+  MESSAGE_SUGGESTION: 7200,
 } as const;
 
 export interface CacheKeyGenerators {
   chatInfo: (chat_id: number) => `chat:info:${number}`;
+  suggestionMessage: (data: {
+    chat_id: number;
+    message_id: number;
+  }) => `suggestion:chat:${number}:message:${number}`;
 }
 
 export const getCacheKey: CacheKeyGenerators = {
   chatInfo: (chat_id: number): `chat:info:${number}` => `chat:info:${chat_id}`,
+  suggestionMessage: (data: {
+    chat_id: number;
+    message_id: number;
+  }): `suggestion:chat:${number}:message:${number}` =>
+    `suggestion:chat:${data.chat_id}:message:${data.message_id}`,
 } as const;
 
 export interface CachedChatInfo {
@@ -84,6 +95,33 @@ class RedisCache {
       members: new Set(members),
       created_by: chat.created_by,
     };
+  }
+
+  async getSuggestionMessage({
+    chat_id,
+    message_id,
+  }: {
+    chat_id: number;
+    message_id: number;
+  }): Promise<string[] | null> {
+    const key = getCacheKey.suggestionMessage({ chat_id, message_id });
+    const cached = await this.client.get(key);
+    return cached ? JSON.parse(cached) : null;
+  }
+
+  async setSuggestionMessage({
+    chat_id,
+    message_id,
+    suggestions,
+  }: {
+    chat_id: number;
+    message_id: number;
+    suggestions: string[];
+  }): Promise<void> {
+    const key = getCacheKey.suggestionMessage({ chat_id, message_id });
+    await this.client.set(key, JSON.stringify(suggestions), {
+      EX: CACHE_TTL.MESSAGE_SUGGESTION,
+    });
   }
 }
 

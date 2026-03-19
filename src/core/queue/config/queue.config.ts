@@ -41,6 +41,7 @@ export const QUEUE_NAMES = {
   PUSH_NOTIFICATIONS: "push-notifications",
   FILE_PROCESSING: "file-processing",
   DATA_EXPORT: "data-export",
+  SUMMARY_CHAT_MESSAGE: "scheduled-summary-chat-message",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];

@@ -1,5 +1,5 @@
 import { Queue, Job, Worker, QueueEvents } from "bullmq";
-import type { QueueOptions, WorkerOptions, JobsOptions } from "bullmq";
+import type { QueueOptions, WorkerOptions } from "bullmq";
 import {
   getQueueOptions,
   getWorkerOptions,

@@ -1,10 +1,14 @@
 import { db } from "@/db";
-import { chatMessages } from "@/db/chatSchema";
-import { and, desc, eq, gt } from "drizzle-orm";
+import { chatMembers, chatMessages, chats } from "@/db/chatSchema";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
 import axios from "axios";
 import { stream } from "hono/streaming";
 import { Context } from "hono";
 import { Environment } from "@/core/utils/EnvValidator";
+import { redisCache } from "@/core/cache/redis.cache";
+import { geminiAi } from "@/config/gemini";
+import { usersTable } from "@/db/userSchema";
+import { resend, resendConfig } from "@/config/resend.config";
 
 interface NomicEmbeddingResponse {
   embedding: number[];
@@ -164,6 +168,92 @@ export class AiService {
       throw error;
     }
   }
+
+  async chatSummaryAll() {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const allChats = await db
+      .select({ chat_id: chats.id })
+      .from(chats)
+      .where(eq(chats.chat_type, "single"));
+
+    if (!allChats.length) return;
+
+    const allMessages = await db
+      .select({
+        chat_id: chatMessages.chat_id,
+        message: chatMessages.message,
+        sender_id: chatMessages.sender_id,
+        created_at: chatMessages.created_at,
+        sender_name: usersTable.name,
+      })
+      .from(chatMessages)
+      .where(
+        and(
+          gte(chatMessages.created_at, startOfDay),
+          lte(chatMessages.created_at, endOfDay),
+        ),
+      )
+      .leftJoin(usersTable, eq(usersTable.id, chatMessages.sender_id));
+
+    if (!allMessages.length) return;
+    const messagesByChat = new Map<number, typeof allMessages>();
+    for (const messages of allMessages) {
+      const chat_id = messages.chat_id;
+      if (!messagesByChat.has(chat_id)) {
+        messagesByChat.set(chat_id, []);
+      }
+      const data = messagesByChat.get(chat_id);
+      if (!data) continue;
+      data.push(messages);
+    }
+    for (const chat of allChats) {
+      const data = messagesByChat.get(chat.chat_id);
+      if (!data) continue;
+      const conversation = data
+        .map((el) => `${el.sender_name}: ${el.message}`)
+        .join("\n");
+      const response = await geminiAi.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: `Summarize this chat conversation in 2-3 sentences. Be friendly and concise:\n\n${conversation}`,
+        config: {
+          temperature: 0.4,
+          maxOutputTokens: 200,
+        },
+      });
+
+      const summary = response.text?.trim();
+
+      console.log(summary, "summary");
+      if (!summary) continue;
+      const members = await db
+        .select({
+          user_id: chatMembers.user_id,
+          email: usersTable.email,
+          name: usersTable.name,
+        })
+        .from(chatMembers)
+        .leftJoin(usersTable, eq(usersTable.id, chatMembers.user_id))
+        .where(eq(chatMembers.chat_id, chat.chat_id));
+
+      await Promise.all(
+        members.map(({ email, name }) => {
+          if (!email) return;
+          return resend.emails.send({
+            from: resendConfig.from.noreply,
+            to: email,
+            subject: `Your chat summary for ${new Date().toDateString()}`,
+            text: `Hi ${name},\n\nHere's a summary of your conversation today:\n\n${summary}`,
+          });
+        }),
+      );
+    }
+  }
+
   async suggestions({
     chat_id,
     c,
@@ -181,95 +271,44 @@ export class AiService {
         .orderBy(desc(chatMessages.created_at))
         .limit(1);
 
-      if (!lastMessage) {
+      if (!lastMessage || lastMessage.sender_id === user_id) {
         return c.json({ suggestions: [] });
       }
-      const isFromUser = lastMessage.sender_id === user_id;
 
-      const prompt = isFromUser
-        ? `
-You are an AI that outputs ONLY valid JSON array of strings.
+      const cached = await redisCache.getSuggestionMessage({
+        chat_id,
+        message_id: lastMessage.id,
+      });
+      if (cached) return c.json({ suggestions: cached });
 
-Last message you wrote:
+      const prompt = `Reply with ONLY a JSON array of exactly 3 strings. No extra text.
+Reply to this message in 3 different tones (each under 15 words):
 "${lastMessage.message}"
+Output: ["...", "...", "..."]`;
 
-TASK:
-- Generate exactly 3 short, friendly, and natural continuations to what you just wrote.
-- Think of it as the next thing you'd say to keep the conversation going.
-- Each must be under 15 words, all different in tone.
+      const response = await geminiAi.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+      });
 
-STRICT RULES:
-1. Output MUST be ONLY a JSON array of strings.
-2. Example of correct output:
-["This is one", "This is two", "This is three"]
-3. WRONG output examples (do NOT produce these):
-{"String 1": "This", "String 2": "That"}
-["This", "That",]
-Text before or after array.
-4. Use only straight double quotes (").
-5. No trailing commas.
-6. Output must be parseable by JSON.parse() with no errors.
-
-NOW OUTPUT ONLY THE ARRAY:
-`
-        : `
-You are an AI that outputs ONLY valid JSON array of strings.
-
-Last message from the other person:
-"${lastMessage.message}"
-
-TASK:
-- Generate exactly 3 short, friendly, and relevant replies to this message.
-- Each must be under 15 words, all different in tone.
-
-STRICT RULES:
-1. Output MUST be ONLY a JSON array of strings.
-2. Example of correct output:
-["This is one", "This is two", "This is three"]
-3. WRONG output examples (do NOT produce these):
-{"String 1": "This", "String 2": "That"}
-["This", "That",]
-Text before or after array.
-4. Use only straight double quotes (").
-5. No trailing commas.
-6. Output must be parseable by JSON.parse() with no errors.
-
-NOW OUTPUT ONLY THE ARRAY:
-`;
-
-      const ollamaRes = await axios.post(
-        `${Environment.OLLAMA_URL}/api/generate`,
-        {
-          model: "llama3.2:1b",
-          prompt,
-          stream: false,
-          format: "json",
-        },
-      );
+      const raw = (response.text ?? "[]")
+        .trim()
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
 
       let suggestions: string[] = [];
       try {
-        const rawOutput = ollamaRes.data.response.trim();
-        const parsedOutput = JSON.parse(rawOutput);
-
-        if (Array.isArray(parsedOutput)) {
-          suggestions = parsedOutput;
-        } else if (parsedOutput && typeof parsedOutput === "object") {
-          if (Array.isArray(parsedOutput.suggestions)) {
-            suggestions = parsedOutput.suggestions.flat();
-          } else {
-            suggestions = Object.values(parsedOutput ?? {}).flat() as string[];
-          }
-        }
-      } catch (err) {
-        console.error(
-          "Failed to parse AI suggestions:",
-          err,
-          "Raw:",
-          ollamaRes.data.response,
-        );
-        suggestions = [];
+        suggestions = JSON.parse(raw);
+      } catch {
+        return c.json({ suggestions: [] });
       }
+
+      await redisCache.setSuggestionMessage({
+        chat_id,
+        message_id: lastMessage.id,
+        suggestions,
+      });
 
       return c.json({ suggestions });
     } catch (error) {
@@ -277,6 +316,119 @@ NOW OUTPUT ONLY THE ARRAY:
       throw error;
     }
   }
+  //   async suggestions({
+  //     chat_id,
+  //     c,
+  //     user_id,
+  //   }: {
+  //     chat_id: number;
+  //     c: Context;
+  //     user_id: number;
+  //   }) {
+  //     try {
+  //       const [lastMessage] = await db
+  //         .select()
+  //         .from(chatMessages)
+  //         .where(eq(chatMessages.chat_id, chat_id))
+  //         .orderBy(desc(chatMessages.created_at))
+  //         .limit(1);
+
+  //       if (!lastMessage) {
+  //         return c.json({ suggestions: [] });
+  //       }
+  //       const isFromUser = lastMessage.sender_id === user_id;
+
+  //       const prompt = isFromUser
+  //         ? `
+  // You are an AI that outputs ONLY valid JSON array of strings.
+
+  // Last message you wrote:
+  // "${lastMessage.message}"
+
+  // TASK:
+  // - Generate exactly 3 short, friendly, and natural continuations to what you just wrote.
+  // - Think of it as the next thing you'd say to keep the conversation going.
+  // - Each must be under 15 words, all different in tone.
+
+  // STRICT RULES:
+  // 1. Output MUST be ONLY a JSON array of strings.
+  // 2. Example of correct output:
+  // ["This is one", "This is two", "This is three"]
+  // 3. WRONG output examples (do NOT produce these):
+  // {"String 1": "This", "String 2": "That"}
+  // ["This", "That",]
+  // Text before or after array.
+  // 4. Use only straight double quotes (").
+  // 5. No trailing commas.
+  // 6. Output must be parseable by JSON.parse() with no errors.
+
+  // NOW OUTPUT ONLY THE ARRAY:
+  // `
+  //         : `
+  // You are an AI that outputs ONLY valid JSON array of strings.
+
+  // Last message from the other person:
+  // "${lastMessage.message}"
+
+  // TASK:
+  // - Generate exactly 3 short, friendly, and relevant replies to this message.
+  // - Each must be under 15 words, all different in tone.
+
+  // STRICT RULES:
+  // 1. Output MUST be ONLY a JSON array of strings.
+  // 2. Example of correct output:
+  // ["This is one", "This is two", "This is three"]
+  // 3. WRONG output examples (do NOT produce these):
+  // {"String 1": "This", "String 2": "That"}
+  // ["This", "That",]
+  // Text before or after array.
+  // 4. Use only straight double quotes (").
+  // 5. No trailing commas.
+  // 6. Output must be parseable by JSON.parse() with no errors.
+
+  // NOW OUTPUT ONLY THE ARRAY:
+  // `;
+
+  //       const ollamaRes = await axios.post(
+  //         `${Environment.OLLAMA_URL}/api/generate`,
+  //         {
+  //           model: "llama3.2:1b",
+  //           prompt,
+  //           stream: false,
+  //           format: "json",
+  //         },
+  //       );
+
+  //       let suggestions: string[] = [];
+  //       try {
+  //         const rawOutput = ollamaRes.data.response.trim();
+  //         const parsedOutput = JSON.parse(rawOutput);
+
+  //         if (Array.isArray(parsedOutput)) {
+  //           suggestions = parsedOutput;
+  //         } else if (parsedOutput && typeof parsedOutput === "object") {
+  //           if (Array.isArray(parsedOutput.suggestions)) {
+  //             suggestions = parsedOutput.suggestions.flat();
+  //           } else {
+  //             suggestions = Object.values(parsedOutput ?? {}).flat() as string[];
+  //           }
+  //         }
+  //       } catch (err) {
+  //         console.error(
+  //           "Failed to parse AI suggestions:",
+  //           err,
+  //           "Raw:",
+  //           ollamaRes.data.response,
+  //         );
+  //         suggestions = [];
+  //       }
+
+  //       return c.json({ suggestions });
+  //     } catch (error) {
+  //       console.error("Error in suggestions:", error);
+  //       throw error;
+  //     }
+  //   }
 
   async embedMessageText() {
     const result = await db

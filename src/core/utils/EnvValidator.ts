@@ -13,6 +13,7 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().min(6),
   REDIS_URL: z.string().startsWith("redis"),
   RESEND_API_KEY: z.string().min(6),
+  GEMINI_API_KEY: z.string(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

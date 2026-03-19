@@ -2,7 +2,7 @@ import { Server, Socket } from "socket.io";
 import { verify } from "jsonwebtoken";
 import { Environment } from "@/core/utils/EnvValidator";
 import { ServerType } from "@hono/node-server/.";
-import { UserType } from "@/types/hono";
+import type { UserType } from "@/types/hono";
 import { ChatMessageType, MessageDeleteAction } from "@/db/chatSchema";
 import { CallType } from "../db/callSchema";
 

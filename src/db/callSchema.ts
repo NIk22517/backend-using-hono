@@ -11,12 +11,13 @@ import { InferSelectModel } from "drizzle-orm";
 
 export const callTypeEnum = pgEnum("call_type", ["audio", "video"]);
 export const callStatusEnum = pgEnum("call_status", [
-  "initiated", // call started but not answered yet
-  "ringing", // user notified but not answered
-  "ongoing", // call in progress
-  "ended", // call completed
-  "missed", // user didn’t answer
-  "rejected", // user declined
+  "initiated",
+  "ringing",
+  "ongoing",
+  "ended",
+  "missed",
+  "rejected",
+  "cancelled",
 ]);
 
 export const PARTICIPANT_STATUSES = [
@@ -28,7 +29,7 @@ export const PARTICIPANT_STATUSES = [
 
 export const participantStatusEnum = pgEnum(
   "participant_status",
-  PARTICIPANT_STATUSES
+  PARTICIPANT_STATUSES,
 );
 
 export const chatCalls = pgTable("chat_calls", {

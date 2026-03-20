@@ -21,9 +21,14 @@ export type ServerToClientEvents = {
     call_id: number;
     caller_id: number;
     call_type: CallType;
+    caller_name: string;
   }) => void;
   "call:accepted": (data: { call_id: number; by: number }) => void;
+  "call:rejected": (data: { call_id: number; rejected_by: number }) => void;
   "call:ended": (data: { call_id: number; ended_by: number }) => void;
+  "call:missed": (data: { call_id: number; missed_by: number }) => void;
+  "call:cancelled": (data: { call_id: number; cancelled_by: number }) => void;
+  "call:participant-left": (data: { call_id: number; left_by: number }) => void;
   "call:room-ready": (data: {
     call_id: number;
     participants: number[];

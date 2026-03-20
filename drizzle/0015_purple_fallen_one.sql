@@ -1,0 +1,1 @@
+ALTER TYPE "public"."call_status" ADD VALUE 'cancelled';

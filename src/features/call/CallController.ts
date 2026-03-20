@@ -15,7 +15,7 @@ export class CallController extends BaseController {
     errorMsg: "Something went wrong while calling",
     builder: this.builder,
     handler: async (ctx) => {
-      const { id } = ctx.get("user");
+      const { id, name } = ctx.get("user");
       if (!id) {
         throw new Error("User not found");
       }
@@ -24,10 +24,12 @@ export class CallController extends BaseController {
         .object({
           chat_id: z.coerce.number(),
           user_id: z.number(),
+          user_name: z.string(),
         })
         .safeParse({
           chat_id,
           user_id: id,
+          user_name: name,
         });
 
       if (!parse.success) {
@@ -48,18 +50,20 @@ export class CallController extends BaseController {
         throw new Error("User not found");
       }
       const {
-        data: { call_id, status },
+        data: { call_id, status, reason },
       } = await ctx.req?.json();
       const parse = z
         .object({
           call_id: z.coerce.number(),
           user_id: z.number(),
           status: z.enum(PARTICIPANT_STATUSES),
+          reason: z.enum(["manual", "timeout"]).optional().default("manual"),
         })
         .safeParse({
           call_id,
           user_id: id,
           status,
+          reason,
         });
 
       if (!parse.success) {

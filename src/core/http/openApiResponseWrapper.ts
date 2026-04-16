@@ -1,23 +1,28 @@
-import type { Context } from "hono";
 import { toAppError } from "../errors";
 import type { ResponseBuilder } from "@/core/utils/ResponseBuilder";
+import { RouteConfig, RouteHandler } from "@hono/zod-openapi";
+import { AppEnv } from "@/types/env";
 
-type AnyContext = Context<any, any, any>;
+type InferRouteContext<R extends RouteConfig> = Parameters<
+  RouteHandler<R, AppEnv>
+>[0];
+type RouteHandlerFn<R extends RouteConfig, Result> = (
+  ctx: InferRouteContext<R>,
+) => Promise<Result>;
 
-type Handler<R, C extends AnyContext> = (ctx: C) => Promise<R>;
-
-export const openApiResponseWrapper = <R, C extends AnyContext>({
+export const openApiResponseWrapper = <R extends RouteConfig, Result>({
   builder,
   action,
   successMsg,
   handler,
 }: {
+  route: R;
   builder: ResponseBuilder;
   action: string;
   successMsg: string;
-  handler: Handler<R, C>;
+  handler: RouteHandlerFn<R, Result>;
 }) => {
-  return async (ctx: C) => {
+  return async (ctx: InferRouteContext<R>) => {
     try {
       const data = await handler(ctx);
 

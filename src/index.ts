@@ -3,11 +3,12 @@ import { serve } from "@hono/node-server";
 import { authRoutes } from "@/features/auth";
 import { userRouter } from "@/features/user";
 import { chatRouter } from "@/features/chat";
+import { callRouter } from "@/features/call";
+import { aiRouter } from "@/features/ai";
+import { inviteRouter } from "@/features/invite";
 import SocketService from "./config/socket";
 import { cors } from "hono/cors";
-import { aiRouter } from "./features/ai";
 import { startMessageScheduler } from "./core/schedule/MessageSchedule";
-import { callRouter } from "./features/call";
 import { swaggerUI } from "@hono/swagger-ui";
 import { Scalar } from "@scalar/hono-api-reference";
 import { redisClient } from "./config/redis.client";
@@ -15,10 +16,11 @@ import { queueManager } from "./core/queue/QueueManager";
 import { rateLimitMiddleware } from "./middleware/rateLimitMiddleware";
 import { rateLimitConfig } from "./core/utils/rateLimitConfig";
 import { pool } from "./db";
+import { AppEnv } from "./types/env";
 
 const port = parseInt(process.env.PORT ?? "8080", 10);
 
-const app = new OpenAPIHono();
+const app = new OpenAPIHono<AppEnv>();
 
 app
   .use(
@@ -31,6 +33,7 @@ app
 app.route("/", authRoutes);
 app.route("/", userRouter);
 app.route("/", chatRouter);
+app.route("/", inviteRouter);
 app.route("/", aiRouter);
 app.route("/", callRouter);
 

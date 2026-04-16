@@ -1,11 +1,11 @@
-import { REDIS_URL } from "@/core/utils/EnvValidator";
+import { Environment } from "@/core/utils/EnvValidator";
 import { createClient } from "redis";
 import type { RedisClientOptions } from "redis";
 
 export type RedisStatus = "ready" | "connecting" | "disconnected" | "error";
 
 const defaultRedisConfig: RedisClientOptions = {
-  url: REDIS_URL,
+  url: Environment.REDIS_URL,
   socket: {
     reconnectStrategy: (retries: number): number | Error => {
       if (retries > 5) {

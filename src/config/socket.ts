@@ -1,6 +1,6 @@
 import { Server, Socket } from "socket.io";
 import { verify } from "jsonwebtoken";
-import { JWT_SECRET } from "@/core/utils/EnvValidator";
+import { Environment } from "@/core/utils/EnvValidator";
 import { ServerType } from "@hono/node-server/.";
 import { UserType } from "@/types/hono";
 import { ChatMessageType, MessageDeleteAction } from "@/db/chatSchema";
@@ -10,7 +10,7 @@ import { CallType } from "../db/callSchema";
 
 export type ServerToClientEvents = {
   sendMessage: (
-    message: ChatMessageType & { reply_data: ChatMessageType | null }
+    message: ChatMessageType & { reply_data: ChatMessageType | null },
   ) => void;
   markReadMessage: (value: { chat_id: number; seen_by: number }) => void;
   deleteMessage: (value: {
@@ -93,7 +93,7 @@ class SocketService {
       this.server,
       {
         cors: { origin: "http://localhost:3001" },
-      }
+      },
     );
 
     // Auth middleware
@@ -118,7 +118,7 @@ class SocketService {
       // === UPDATED: Call room management with proper sequencing ===
       socket.on("call:join-room", ({ call_id }) => {
         console.log(
-          `User ${socket.user?.id} joining call room: call_${call_id}`
+          `User ${socket.user?.id} joining call room: call_${call_id}`,
         );
         socket.join(`call_${call_id}`);
 
@@ -137,7 +137,7 @@ class SocketService {
       // NEW: WebRTC readiness signaling
       socket.on("call:ready-for-webrtc", ({ call_id }) => {
         console.log(
-          `User ${socket.user?.id} is ready for WebRTC in call ${call_id}`
+          `User ${socket.user?.id} is ready for WebRTC in call ${call_id}`,
         );
         // Signal to other participants that this user is ready to start WebRTC
         socket.to(`call_${call_id}`).emit("call:accepted", {
@@ -148,7 +148,7 @@ class SocketService {
 
       socket.on("call:leave", ({ call_id }) => {
         console.log(
-          `User ${socket.user?.id} leaving call room: call_${call_id}`
+          `User ${socket.user?.id} leaving call room: call_${call_id}`,
         );
         socket.leave(`call_${call_id}`);
 
@@ -164,7 +164,7 @@ class SocketService {
 
       socket.on("webrtc:offer", (payload) => {
         console.log(
-          `📡 SERVER: Relaying offer for call ${payload.call_id} from user ${socket.user?.id}`
+          `📡 SERVER: Relaying offer for call ${payload.call_id} from user ${socket.user?.id}`,
         );
         console.log("📡 SERVER: Offer SDP type:", payload.sdp?.type);
         socket.to(`call_${payload.call_id}`).emit("webrtc:offer", payload);
@@ -172,7 +172,7 @@ class SocketService {
 
       socket.on("webrtc:answer", (payload) => {
         console.log(
-          `📡 SERVER: Relaying answer for call ${payload.call_id} from user ${socket.user?.id}`
+          `📡 SERVER: Relaying answer for call ${payload.call_id} from user ${socket.user?.id}`,
         );
         console.log("📡 SERVER: Answer SDP type:", payload.sdp?.type);
         socket.to(`call_${payload.call_id}`).emit("webrtc:answer", payload);
@@ -180,11 +180,11 @@ class SocketService {
 
       socket.on("webrtc:ice-candidate", (payload) => {
         console.log(
-          `📡 SERVER: Relaying ICE candidate for call ${payload.call_id} from user ${socket.user?.id}`
+          `📡 SERVER: Relaying ICE candidate for call ${payload.call_id} from user ${socket.user?.id}`,
         );
         console.log(
           "📡 SERVER: ICE candidate type:",
-          payload.candidate?.candidate?.substring(0, 50)
+          payload.candidate?.candidate?.substring(0, 50),
         );
         socket
           .to(`call_${payload.call_id}`)
@@ -194,7 +194,7 @@ class SocketService {
       // Also add debug to the call:ready-for-webrtc handler:
       socket.on("call:ready-for-webrtc", ({ call_id }) => {
         console.log(
-          `📡 SERVER: User ${socket.user?.id} is ready for WebRTC in call ${call_id}`
+          `📡 SERVER: User ${socket.user?.id} is ready for WebRTC in call ${call_id}`,
         );
         socket.to(`call_${call_id}`).emit("call:accepted", {
           call_id,
@@ -249,7 +249,7 @@ class SocketService {
     }
 
     try {
-      const decoded = verify(token, JWT_SECRET);
+      const decoded = verify(token, Environment.JWT_SECRET);
       if (typeof decoded !== "object" || !("id" in decoded)) {
         return next(new Error("Invalid token payload"));
       }

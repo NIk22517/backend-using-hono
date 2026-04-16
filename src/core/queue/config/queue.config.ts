@@ -1,4 +1,4 @@
-import { REDIS_PASSWORD, REDIS_URL } from "@/core/utils/EnvValidator";
+import { Environment } from "@/core/utils/EnvValidator";
 import { ConnectionOptions, QueueOptions, WorkerOptions } from "bullmq";
 
 export interface QueueConfig {
@@ -47,8 +47,8 @@ export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 
 export function getRedisConnection(): ConnectionOptions {
   return {
-    url: REDIS_URL,
-    password: REDIS_PASSWORD,
+    url: Environment.REDIS_URL,
+    password: Environment.REDIS_PASSWORD,
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
   };

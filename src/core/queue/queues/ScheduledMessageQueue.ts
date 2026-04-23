@@ -4,12 +4,14 @@ import { db } from "@/db";
 import { chatScheduleMessages } from "@/db/chatSchema";
 import { eq } from "drizzle-orm";
 import { services } from "@/core/di/container";
+import { UploadApiResponse } from "@/features/chat/chat.schemas";
 
 export interface ScheduledMessageJobData {
   scheduleId: number;
   chatId: number;
   senderId: number;
   message: string;
+  attachments: UploadApiResponse[];
 }
 
 export interface ScheduledMessageJobResult {
@@ -35,7 +37,7 @@ export class ScheduledMessageQueue extends BaseQueueManager<
   protected async process(
     job: Job<ScheduledMessageJobData, ScheduledMessageJobResult>,
   ): Promise<ScheduledMessageJobResult> {
-    const { chatId, message, scheduleId, senderId } = job.data;
+    const { chatId, message, scheduleId, senderId, attachments } = job.data;
     const attemptNumber = job.attemptsMade + 1;
     console.log(
       `[ScheduledMessage] Processing ${scheduleId} (attempt ${attemptNumber}/${job.opts.attempts})`,
@@ -58,6 +60,7 @@ export class ScheduledMessageQueue extends BaseQueueManager<
           files: null,
           message,
           sender_id: senderId,
+          reuseAttachments: attachments as any,
         });
 
         await tx
@@ -79,7 +82,8 @@ export class ScheduledMessageQueue extends BaseQueueManager<
         sentAt: new Date(),
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
 
       const isFinalAttempt = attemptNumber >= (job.opts.attempts ?? 3);
 
@@ -145,6 +149,7 @@ export class ScheduledMessageQueue extends BaseQueueManager<
         chatId: data.chatId,
         senderId: data.senderId,
         message: data.message || "",
+        attachments: data.attachments,
       },
       data.scheduledAt,
     );
@@ -179,6 +184,7 @@ export class ScheduledMessageQueue extends BaseQueueManager<
           chatId: schedule.chat_id,
           senderId: schedule.sender_id,
           message: schedule.message || "",
+          attachments: schedule?.attachments ?? [],
         },
         schedule.scheduled_at,
       );

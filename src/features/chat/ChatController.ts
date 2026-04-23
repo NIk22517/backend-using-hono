@@ -225,12 +225,14 @@ export class ChatController extends BaseController {
       if (!user) {
         throw new Error("User not found");
       }
-      const { chat_id, message, scheduled_at } = ctx.req.valid("form");
+      const { chat_id, message, scheduled_at, files } = ctx.req.valid("form");
+      const fileList = files?.filter((f): f is File => f instanceof File);
       return this.deps.chatServices.scheduleMessage({
         chat_id,
         message,
         scheduled_at,
         sender_id: user.id,
+        fileList,
       });
     },
   });

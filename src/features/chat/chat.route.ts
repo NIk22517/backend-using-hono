@@ -83,37 +83,19 @@ chatRouter.openapi(
   chatCoversationContactsRoute,
   controller.getConversationContact,
 );
+
 chatRouter.openapi(pinUnpinChatRoute, controller.pinUnpinChat);
 chatRouter.openapi(chatSendMsgRoute, controller.sendMessage);
 chatRouter.openapi(chatMessagesRoute, controller.getChatMessages);
+
 chatRouter.openapi(chatScheduleMessage, controller.scheduleMessages);
-
-
-
 chatRouter.openapi(getScheduleMessage, controller.getScheduleMessage);
-
-
-
 chatRouter.openapi(deleteSchedule, controller.deleteScheduleMessage);
-
-
-
 chatRouter.openapi(updateSchedule, controller.updateScheduleMessages);
 
-
-
 chatRouter.openapi(chatMarkAsReadMessage, controller.markAsReadMsg);
-
-
-
 chatRouter.openapi(chatDeleteMessageRoute, controller.deleteMessages);
-
-
-
 chatRouter.openapi(chatMessageStatusRoute, controller.checkMessageStatus);
-
-
-
 chatRouter.openapi(chatSearchMessageRoute, controller.messagesSearch);
 
 export default chatRouter;

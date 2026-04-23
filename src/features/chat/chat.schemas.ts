@@ -556,6 +556,21 @@ export const scheduleSchema = ChatScheduleMessageInsertSchema.pick({
   scheduled_at: z.preprocess((arg) => {
     if (typeof arg === "string" || arg instanceof Date) return new Date(arg);
   }, z.date()),
+  files: z
+    .union([
+      z.any().openapi({
+        type: "string",
+        format: "binary",
+      }),
+      z.array(
+        z.any().openapi({
+          type: "string",
+          format: "binary",
+        }),
+      ),
+    ])
+    .transform((v) => (Array.isArray(v) ? v : [v]))
+    .optional(),
 });
 
 export const ChatScheduleMessagesSuccessSchema = createSuccessResponseSchema(

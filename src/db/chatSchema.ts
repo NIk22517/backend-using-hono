@@ -339,6 +339,7 @@ export const chatScheduleMessages = pgTable("chat_message_schedules", {
     .references(() => usersTable.id)
     .notNull(),
   message: text("message").default(""),
+  attachments: json("attachments").$type<UploadApiResponse[]>().default([]),
   scheduled_at: timestamp("scheduled_at").notNull(),
   timezone: text("timezone").default("UTC"),
   active: boolean("active").default(true),

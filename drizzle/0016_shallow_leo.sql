@@ -1,0 +1,1 @@
+ALTER TABLE "chat_message_schedules" ADD COLUMN "attachments" json DEFAULT '[]'::json;

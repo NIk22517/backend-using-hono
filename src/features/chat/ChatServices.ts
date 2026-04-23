@@ -1316,12 +1316,21 @@ export class ChatServices {
     message,
     sender_id,
     scheduled_at,
+    fileList,
   }: {
     chat_id: number;
     message: string;
     sender_id: number;
     scheduled_at: Date;
+    fileList: File[] | undefined;
   }) {
+    let uploadFiles: UploadApiResponse[] = [];
+    if (fileList && fileList?.length > 0) {
+      uploadFiles = await this.uploadFiles({
+        files: fileList,
+        folder_name: `chat_messages_${chat_id}`,
+      });
+    }
     const [result] = await db
       .insert(chatScheduleMessages)
       .values({
@@ -1330,6 +1339,7 @@ export class ChatServices {
         message,
         scheduled_at,
         timezone: "Asia/Kolkata",
+        attachments: uploadFiles,
       })
       .returning();
 
@@ -1339,6 +1349,7 @@ export class ChatServices {
         message: result.message ?? "",
         scheduleId: result.id,
         senderId: result.sender_id,
+        attachments: result.attachments ?? [],
       },
       result.scheduled_at,
     );
@@ -1365,6 +1376,7 @@ export class ChatServices {
         last_attempt_at: chatScheduleMessages.last_attempt_at,
         completed_at: chatScheduleMessages.completed_at,
         created_at: chatScheduleMessages.created_at,
+        attachments: chatScheduleMessages.attachments,
       })
       .from(chatScheduleMessages)
       .where(
@@ -1441,6 +1453,7 @@ export class ChatServices {
       scheduledAt: result.scheduled_at,
       scheduleId: result.id,
       senderId: result.sender_id,
+      attachments: result.attachments ?? [],
     });
 
     return result;

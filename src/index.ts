@@ -67,9 +67,7 @@ app.get("/ui", swaggerUI({ url: "/doc" }));
 app.get(
   "/reference",
   Scalar({
-    spec: {
-      url: "/doc",
-    },
+    url: "/doc",
   }),
 );
 

@@ -4,7 +4,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.json ./
@@ -21,8 +21,8 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile --prod  # no devDependencies
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 COPY --from=builder /app/dist ./dist
 COPY drizzle ./drizzle

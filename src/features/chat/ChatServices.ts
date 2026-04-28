@@ -1243,7 +1243,13 @@ export class ChatServices {
     }
   }
 
-  async getSingleChatList({ chat_id }: { chat_id: number }) {
+  async getSingleChatList({
+    chat_id,
+    user_id,
+  }: {
+    chat_id: number;
+    user_id: number;
+  }) {
     const [result] = await db
       .select({
         chat_id: chats.id,
@@ -1278,8 +1284,16 @@ export class ChatServices {
               )
               END
         `.as("members"),
+        unread_count: chatReadSummary.unread_count,
       })
       .from(chats)
+      .leftJoin(
+        chatReadSummary,
+        and(
+          eq(chatReadSummary.chat_id, chat_id),
+          eq(chatReadSummary.user_id, user_id),
+        ),
+      )
       .where(eq(chats.id, chat_id));
 
     if (!result) {

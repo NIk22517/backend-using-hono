@@ -192,8 +192,9 @@ export class ChatController extends BaseController {
     builder: this.builder,
     successMsg: "Single Chat List Fetched Successfully",
     handler: async (ctx) => {
+      const { id } = ctx.get("user");
       const { chat_id } = ctx.req.valid("param");
-      return this.deps.chatServices.getSingleChatList({ chat_id });
+      return this.deps.chatServices.getSingleChatList({ chat_id, user_id: id });
     },
   });
 

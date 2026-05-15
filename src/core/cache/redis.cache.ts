@@ -6,6 +6,7 @@ import {
   chats,
   ChatTypeEnum,
 } from "@/db/chatSchema";
+import { usersTable } from "@/db/userSchema";
 import { eq } from "drizzle-orm";
 
 export interface CacheTTLConfig {
@@ -24,6 +25,7 @@ export interface CacheKeyGenerators {
     chat_id: number;
     message_id: number;
   }) => `suggestion:chat:${number}:message:${number}`;
+  userInfo: (user_id: number) => `user:info:${number}`;
 }
 
 export const getCacheKey: CacheKeyGenerators = {
@@ -33,6 +35,7 @@ export const getCacheKey: CacheKeyGenerators = {
     message_id: number;
   }): `suggestion:chat:${number}:message:${number}` =>
     `suggestion:chat:${data.chat_id}:message:${data.message_id}`,
+  userInfo: (user_id: number) => `user:info:${user_id}`,
 } as const;
 
 export interface CachedChatInfo {
@@ -42,8 +45,41 @@ export interface CachedChatInfo {
   members: Set<number>;
 }
 
+export interface CachedUserInfo {
+  user_id: number;
+  user_name: string;
+}
+
 class RedisCache {
   private client = redisClient.getClient();
+
+  async getOrSetMapUser(user_id: number): Promise<CachedUserInfo | null> {
+    const key = getCacheKey.userInfo(user_id);
+
+    const cached = await this.client.hGetAll(key);
+    if (cached && Object.keys(cached).length > 0) {
+      return {
+        user_id: Number(cached.user_id),
+        user_name: cached.user_name,
+      };
+    }
+
+    //not cache
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, user_id));
+
+    const payload: CachedUserInfo = {
+      user_id: user.id,
+      user_name: user.name,
+    };
+    await this.client.hSet(key, {
+      user_id: user.id.toString(),
+      user_name: user.name,
+    });
+    return payload;
+  }
 
   async getOrSetMapChat(chat_id: number): Promise<CachedChatInfo | null> {
     const key = getCacheKey.chatInfo(chat_id);

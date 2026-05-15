@@ -3,6 +3,7 @@ import { AuthService } from "@/features/auth";
 import { CallServices } from "@/features/call/CallService";
 import { ChatServices } from "@/features/chat";
 import { InviteServices } from "@/features/invite/InviteServices";
+import { NotificationsServices } from "@/features/notifications/NotificationsServices";
 import { UserServices } from "@/features/user";
 
 export interface Services {
@@ -12,4 +13,5 @@ export interface Services {
   inviteServices: InviteServices;
   AiServices: AiService;
   CallServices: CallServices;
+  notificationServices: NotificationsServices;
 }

@@ -16,6 +16,7 @@ import { rateLimitMiddleware } from "./middleware/rateLimitMiddleware";
 import { rateLimitConfig } from "./core/utils/rateLimitConfig";
 import { pool } from "./db";
 import { AppEnv } from "./types/env";
+import { notificationRouter } from "./features/notifications";
 
 const port = parseInt(process.env.PORT ?? "8080", 10);
 
@@ -35,6 +36,7 @@ app.route("/", chatRouter);
 app.route("/", inviteRouter);
 app.route("/", aiRouter);
 app.route("/", callRouter);
+app.route("/", notificationRouter);
 
 // OpenAPI documentation endpoint
 app.doc("/doc", {

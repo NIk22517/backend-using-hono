@@ -31,3 +31,5 @@ export {
   inviteChannelEnum,
   inviteStatusEnum,
 } from "./inviteSchema";
+
+export { pushTokens } from "./pushNotificationSchema";

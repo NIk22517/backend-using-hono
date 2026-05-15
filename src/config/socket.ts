@@ -5,6 +5,7 @@ import { ServerType } from "@hono/node-server";
 import type { UserType } from "@/types/hono";
 import { ChatMessageType, MessageDeleteAction } from "@/db/chatSchema";
 import { CallType } from "../db/callSchema";
+import { services } from "@/core/di/container";
 
 export type ServerToClientEvents = {
   sendMessage: (
@@ -234,6 +235,10 @@ class SocketService {
     this.getIO().emit(event, ...args);
   }
 
+  public isOnline(userId: number): boolean {
+    return this.connectedUsers.has(userId);
+  }
+
   public sendToUser<K extends keyof ServerToClientEvents>(payload: {
     userId: number;
     event: K;
@@ -258,6 +263,25 @@ class SocketService {
       });
     }
     return userIds;
+  }
+
+  public async sendPush({
+    user_id,
+    payload,
+  }: {
+    user_id: number;
+    payload: {
+      title: string;
+      body: string;
+      data?: Record<string, unknown>;
+    };
+  }) {
+    const userSocket = this.connectedUsers.get(user_id);
+    if (userSocket) return;
+    await services.notificationServices.sendNotification({
+      user_id,
+      payload,
+    });
   }
 }
 

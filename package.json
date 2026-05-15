@@ -27,6 +27,7 @@
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.43.1",
     "drizzle-zod": "^0.8.3",
+    "expo-server-sdk": "^6.1.0",
     "hono": "^4.7.8",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.15.6",

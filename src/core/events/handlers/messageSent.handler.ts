@@ -19,6 +19,7 @@ export const messageSentHandler = async ({
 
   const chat_info = await redisCache.getOrSetMapChat(chat_id);
   const members = chat_info ? [...chat_info.members] : [];
+  const user_info = await redisCache.getOrSetMapUser(sender_id);
 
   await db
     .insert(chatMessageReadReceipts)
@@ -61,11 +62,30 @@ export const messageSentHandler = async ({
     });
 
   members.forEach((member) => {
-    socketService.sendToUser({
-      userId: member,
-      event: "sendMessage",
-      args: [message],
-    });
+    if (socketService.isOnline(member)) {
+      socketService.sendToUser({
+        userId: member,
+        event: "sendMessage",
+        args: [message],
+      });
+    } else {
+      socketService.sendPush({
+        user_id: member,
+        payload: {
+          title: user_info?.user_name ?? "Tello",
+          body: message?.message
+            ? message?.message?.length > 100
+              ? message.message.slice(0, 97) + "..."
+              : message.message
+            : "",
+          data: {
+            screen: "Chat",
+            chat_id: message.chat_id,
+            message_id: message.id,
+          },
+        },
+      });
+    }
 
     if (member !== sender_id) {
       socketService.sendToUser({

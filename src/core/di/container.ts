@@ -5,6 +5,7 @@ import { ChatServices } from "@/features/chat/ChatServices";
 import { UserServices } from "@/features/user/UserServices";
 import { Services } from "./types";
 import { InviteServices } from "@/features/invite/InviteServices";
+import { NotificationsServices } from "@/features/notifications/NotificationsServices";
 
 export const services: Services = {
   authService: new AuthService(),
@@ -13,4 +14,5 @@ export const services: Services = {
   inviteServices: new InviteServices(),
   AiServices: new AiService(),
   CallServices: new CallServices(),
+  notificationServices: new NotificationsServices(),
 };

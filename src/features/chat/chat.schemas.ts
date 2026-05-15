@@ -626,7 +626,7 @@ export const DeleteMessageSchema = z.object({
   data: z.discriminatedUnion("action", [
     z.object({
       action: z.enum(messageDeleteActionEnum.enumValues),
-      chat_id: z.string().transform(Number),
+      chat_id: z.union([z.string(), z.number()]).transform(Number),
       message_ids: z.array(z.number()).min(1),
     }),
     z.object({

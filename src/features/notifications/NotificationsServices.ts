@@ -58,7 +58,10 @@ export class NotificationsServices {
     if (!tokens || tokens.length === 0) return;
 
     const messages: ExpoPushMessage[] = tokens
-      .filter((token) => Expo.isExpoPushToken(token))
+      .filter((token) => {
+        const valid = Expo.isExpoPushToken(token.token);
+        return valid;
+      })
       .map(({ token }) => ({
         to: token,
         title: payload.title,

@@ -276,8 +276,11 @@ class SocketService {
       data?: Record<string, unknown>;
     };
   }) {
+    
     const userSocket = this.connectedUsers.get(user_id);
-    if (userSocket) return;
+    if (userSocket) {
+      console.info(`${userSocket} is online skipping push notification`);
+    }
     await services.notificationServices.sendNotification({
       user_id,
       payload,

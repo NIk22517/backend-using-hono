@@ -68,7 +68,7 @@ export const messageSentHandler = async ({
         event: "sendMessage",
         args: [message],
       });
-    } else {
+    } else if (sender_id !== member) {
       socketService.sendPush({
         user_id: member,
         payload: {
@@ -82,6 +82,7 @@ export const messageSentHandler = async ({
             screen: "Chat",
             chat_id: message.chat_id,
             message_id: message.id,
+            to: member,
           },
         },
       });

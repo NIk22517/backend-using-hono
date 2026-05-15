@@ -16,7 +16,6 @@ export class NotificationsController extends BaseController {
     route: updatePushTokenRoute,
     handler: async (ctx) => {
       const user = ctx.get("user");
-      console.log(user, "user");
       if (!user.id) throw AppError.unauthorized();
       const { data } = ctx.req.valid("json");
       return this.deps.notificationServices.updatePushToken({
